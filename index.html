@@ -225,6 +225,17 @@
       </div>
     </div>
 
+    <!-- Debug: ver texto extraido -->
+    <div class="rounded-xl bg-slate-800/40 border border-slate-700/50 p-4">
+      <button onclick="toggleDebug()" class="flex items-center gap-2 text-xs text-slate-500 hover:text-slate-300 transition-colors">
+        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>
+        Ver texto extraido del PDF (debug)
+      </button>
+      <div id="debugBox" class="hidden mt-3">
+        <pre id="debugText" class="text-[10px] text-slate-400 bg-slate-900/80 rounded-lg p-3 max-h-64 overflow-auto whitespace-pre-wrap break-all border border-slate-700/30"></pre>
+      </div>
+    </div>
+
     <!-- Reset -->
     <button onclick="resetAll()"
       class="w-full flex items-center justify-center gap-2 py-3 px-6 rounded-xl text-sm font-medium bg-slate-800/50 text-slate-300 border border-slate-700/50 hover:bg-slate-800 hover:border-slate-600 transition-all duration-300">
@@ -341,105 +352,274 @@ async function extractText(file) {
 }
 
 // ============================================================
-// BANK DETECTION + DEPOSIT ANALYSIS
+// BANK DETECTION + DEPOSIT ANALYSIS (v2 - much more robust)
 // ============================================================
 const BANKS = [
   {name:'Banco Mercantil', p:[/mercantil/i]},
   {name:'Banco Banesco', p:[/banesco/i]},
   {name:'BBVA Banco Universal', p:[/bbva/i, /provincial/i]},
   {name:'Banco Santander', p:[/santander/i]},
-  {name:'Banco de Venezuela', p:[/banco\s*de\s*venezuela/i, /bandev/i]},
+  {name:'Banco de Venezuela', p:[/banco\s*de\s*venezuela/i, /bandev/i, /bdv/i]},
   {name:'Banco Plaza', p:[/banco\s*plaza/i]},
   {name:'BOD', p:[/\bbod\b/i, /occidental\s*de\s*descuento/i]},
-  {name:'Banco Nacional de Credito', p:[/nacional\s*de\s*cr/i]},
-  {name:'Banco Exterior', p:[/banco\s*exterior/i]},
+  {name:'Banco Nacional de Credito', p:[/nacional\s*de\s*cr[eé]/i, /\bbnc\b/i]},
+  {name:'Banco Exterior', p:[/exterior/i]},
   {name:'Banco Caroni', p:[/caron[ií]/i]},
-  {name:'Banco Fondo Comun', p:[/fondo\s*com/i]},
+  {name:'Banco Fondo Comun', p:[/fondo\s*com[uú]n/i, /\bbfc\b/i]},
   {name:'Bancaribe', p:[/bancaribe/i]},
   {name:'Bancrecer', p:[/bancrecer/i]},
-  {name:'Banco Activo', p:[/banco\s*activo/i]},
+  {name:'Banco Activo', p:[/banco\s*activo/i, /\bactivo\b/i]},
   {name:'Bancamiga', p:[/bancamiga/i]},
   {name:'Banco Mi Banco', p:[/mi\s*banco/i]},
   {name:'Banco Tesoro', p:[/tesoro/i]},
+  {name:'Banco 100% Banco', p:[/100\s*%\s*banco/i]},
+  {name:'Banco Venezolano de Credito', p:[/venezolano\s*de\s*cr/i, /\bbvc\b/i]},
+  {name:'Banco del Tesoro', p:[/del\s*tesoro/i]},
+  {name:'Banco Occidental de Descuento', p:[/occidental/i, /\bbod\b/i]},
 ];
 
 function detectBank(text) {
+  const t = text.substring(0, 3000); // first 3000 chars
   for (const b of BANKS) {
-    for (const r of b.p) { if (r.test(text)) return b.name; }
+    for (const r of b.p) { if (r.test(t)) return b.name; }
   }
   return 'Banco no detectado';
 }
 
+// Parse Venezuelan/US number formats
 function parseAmount(s) {
-  let c = s.replace(/\s/g,'');
+  let c = s.replace(/[\s\u00a0]/g,'').trim();
+  // 1.234,56 -> 1234.56
   if (/^\d{1,3}(\.\d{3})+,\d{1,2}$/.test(c)) c = c.replace(/\./g,'').replace(',','.');
+  // 1,234.56 -> 1234.56
   else if (/^\d{1,3}(,\d{3})+\.\d{1,2}$/.test(c)) c = c.replace(/,/g,'');
+  // 1234,56 -> 1234.56
   else if (/^\d+,\d{1,2}$/.test(c) && !/^\d+\.\d+$/.test(c)) c = c.replace(',','.');
+  // 1234.56 -> 1234.56 (already ok)
   const n = parseFloat(c);
   return isNaN(n) ? 0 : Math.abs(n);
 }
 
-function isCredit(line) {
-  const cr = [/abono/i,/dep[oó]s/i,/transfer/i,/n[oó]mina/i,/pago\s*recib/i,/ingreso/i,/cr[eé]dito/i,/bono/i,/acredit/i,/consign/i,/devoluci/i,/reembolso/i];
-  const db = [/d[eé]bito/i,/retiro/i,/cargo/i,/comisi[oó]n\s*(?:por|de)/i,/impuesto/i,/iv(?:a|tan)/i,/pago\s*(?:de|por)/i,/giro/i,/mora/i];
-  const has = cr.some(r => r.test(line));
-  const deb = db.some(r => r.test(line));
-  return has && !deb;
-}
-
-function extractAmounts(line) {
-  const pats = [
-    /(?:Bs\.?\s*|USD\s*|\$\s*)(\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{2})?)/g,
-    /(\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{2}))/g
-  ];
-  for (const pat of pats) {
-    const amts = [];
-    let m;
-    while ((m = pat.exec(line)) !== null) { const v = parseAmount(m[1]); if (v > 0) amts.push(v); }
-    if (amts.length) return amts;
-  }
-  return [];
-}
-
-function calcMonthDeposits(text) {
-  const lines = text.split('\n');
-  let total = 0;
-  for (const line of lines) {
-    if (isCredit(line)) {
-      const amts = extractAmounts(line);
-      if (amts.length) total += Math.max(...amts);
+// Extract ALL numbers from a line
+function getAllAmounts(line) {
+  const results = [];
+  // Match numbers with optional currency prefix, handles: 1.234,56 | 1,234.56 | 1234.56 | Bs. 1234 | 1.234,56 Bs
+  const regex = /(?:Bs\.?\s*|USD\s*|\$\s*|Bs\.?\s*S?\s*\.?\s*)(\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{1,2})?)|(\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{1,2}))/g;
+  let m;
+  while ((m = regex.exec(line)) !== null) {
+    const raw = m[1] || m[2];
+    if (raw) {
+      const v = parseAmount(raw);
+      if (v > 0) results.push(v);
     }
   }
-  return total;
+  return results;
+}
+
+// Check if line is a credit/income transaction
+function isCreditTransaction(line) {
+  const lower = line.toLowerCase();
+
+  // Strong credit indicators
+  const creditWords = [
+    'abono', 'deposito', 'depósito', 'transferencia entrante', 'transferencia recibida',
+    'transfer rec', 'transf a favor', 'nómina', 'nomina', 'pago recibido', 'pago rec',
+    'ingreso', 'crédito', 'credito', 'bono', 'acreditación', 'acreditacion',
+    'consignación', 'consignacion', 'devolución', 'devolucion', 'reembolso',
+    'abono por', 'transfer', 'transf.', 'transf ', 'dep.', 'dep ',
+    'cash deposit', 'credit transfer', 'incoming', 'salary', 'payroll',
+    // Column headers that indicate this is the credit side
+    'abonos', 'créditos', 'creditos', 'ingresos',
+    // Venezuelan specific
+    'transferencia de tercero', 'transferencia propia',
+    'pago de nómina', 'pago nómina',
+    'giro a tu favor', 'giro a favor',
+  ];
+
+  // Strong debit indicators
+  const debitWords = [
+    'débito', 'debito', 'retiro', 'cargo', 'comisión', 'comision',
+    'impuesto', 'iva', 'itf', 'pago de', 'pago por', 'giro',
+    'mora', 'reversión', 'reversion', 'descuento', 'dcto',
+    'not de cr', 'ndc', 'cargo por', 'cobro',
+    'debito automático', 'débito automático',
+    'servicio', 'mantenimiento', 'administración',
+  ];
+
+  const hasCredit = creditWords.some(w => lower.includes(w));
+  const hasDebit = debitWords.some(w => lower.includes(w));
+
+  if (hasCredit && !hasDebit) return true;
+  if (hasDebit && !hasCredit) return false;
+
+  // If no clear indicator, check if line has a column structure
+  // In tabular format: if the line has 2+ numbers, the LARGER one is often the amount
+  return false;
+}
+
+// Check if line contains a date (to identify transaction lines)
+function hasDate(line) {
+  // DD/MM/YYYY, DD-MM-YYYY, DD.MM.YYYY, DD/MM/YY
+  return /\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}/.test(line);
+}
+
+// Extract date from line
+function extractDate(line) {
+  const m = line.match(/(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})/);
+  if (!m) return null;
+  let year = parseInt(m[3]);
+  if (year < 100) year += 2000;
+  return { day: parseInt(m[1]), month: parseInt(m[2]), year };
+}
+
+// Split text into months based on dates
+function splitByMonths(text) {
+  const lines = text.split('\n');
+
+  // Collect all lines with dates
+  const datedLines = [];
+  for (let i = 0; i < lines.length; i++) {
+    const d = extractDate(lines[i]);
+    if (d) datedLines.push({ idx: i, date: d, line: lines[i] });
+  }
+
+  if (datedLines.length === 0) return [text]; // Can't split
+
+  // Group by month/year
+  const monthGroups = {};
+  for (const dl of datedLines) {
+    const key = dl.date.year + '-' + String(dl.date.month).padStart(2, '0');
+    if (!monthGroups[key]) monthGroups[key] = [];
+    monthGroups[key].push(dl);
+  }
+
+  const keys = Object.keys(monthGroups).sort();
+  const chunks = [];
+  for (const k of keys) {
+    const firstIdx = monthGroups[k][0].idx;
+    const lastIdx = monthGroups[k][monthGroups[k].length - 1].idx;
+    // Get lines from first to last of this month (plus some context)
+    const start = Math.max(0, firstIdx - 2);
+    const end = Math.min(lines.length, lastIdx + 3);
+    chunks.push(lines.slice(start, end).join('\n'));
+  }
+
+  return chunks;
+}
+
+// Calculate total credit/deposits in a text chunk
+function calcDeposits(chunk) {
+  const lines = chunk.split('\n');
+  let total = 0;
+  let debugLines = [];
+
+  for (const line of lines) {
+    if (!hasDate(line)) continue; // skip non-transaction lines
+
+    const amounts = getAllAmounts(line);
+    if (amounts.length === 0) continue;
+
+    if (isCreditTransaction(line)) {
+      // Take the largest reasonable amount (not the balance)
+      const reasonable = amounts.filter(a => a < 10000000); // filter out balances
+      if (reasonable.length > 0) {
+        const maxAmt = Math.max(...reasonable);
+        total += maxAmt;
+        debugLines.push({line: line.substring(0,80), amt: maxAmt});
+      }
+    }
+  }
+
+  return { total, debugLines };
+}
+
+// Also try: sum ALL positive movements (not just keyword-matched)
+// This is the "fallback" approach for unknown formats
+function calcDepositsFallback(chunk) {
+  const lines = chunk.split('\n');
+  let total = 0;
+  let count = 0;
+
+  for (const line of lines) {
+    if (!hasDate(line)) continue;
+    const amounts = getAllAmounts(line);
+    if (amounts.length < 2) continue; // Need at least 2 numbers (amount + balance)
+
+    // In tabular format with 2 columns (debit/credit),
+    // we need to figure out which is which.
+    // Heuristic: if there are exactly 2 amounts and one is much larger,
+    // the smaller one is likely the transaction amount
+    // If there are 3+ amounts, the last one is usually the balance
+
+    // Approach: take the second-to-last amount as the transaction
+    // (last is usually balance, second-to-last is the amount)
+    if (amounts.length >= 2) {
+      const transactionAmt = amounts[amounts.length - 2]; // second to last
+      const balance = amounts[amounts.length - 1]; // last = balance
+      // Only count if transaction is smaller than balance (likely a credit)
+      if (transactionAmt <= balance && transactionAmt > 0) {
+        total += transactionAmt;
+        count++;
+      }
+    }
+  }
+
+  return { total, count };
 }
 
 function analyzeTexts(texts) {
   const all = texts.join('\n\n');
   const bank = detectBank(all);
 
-  const months = [];
-  for (const t of texts) {
-    const lines = t.split('\n');
-    if (lines.length > 30) {
-      const chunk = Math.floor(lines.length / 3);
-      months.push(lines.slice(0, chunk).join('\n'));
-      months.push(lines.slice(chunk, chunk*2).join('\n'));
-      months.push(lines.slice(chunk*2).join('\n'));
+  // Store raw text for debug
+  window._rawText = all;
+
+  // Try to split by months
+  let chunks = [];
+  for (const text of texts) {
+    const c = splitByMonths(text);
+    chunks.push(...c);
+  }
+
+  // Take last 3 chunks (most recent)
+  const recent = chunks.slice(-3);
+
+  // Calculate deposits for each chunk
+  let deps = recent.map(c => {
+    const r = calcDeposits(c);
+    return r.total;
+  });
+
+  // If all zeros, try fallback approach
+  if (deps.every(d => d === 0)) {
+    deps = recent.map(c => {
+      const r = calcDepositsFallback(c);
+      return r.total;
+    });
+  }
+
+  // If still all zeros, try treating the whole text as one chunk
+  if (deps.every(d => d === 0) && recent.length > 0) {
+    const r = calcDeposits(all);
+    if (r.total > 0) {
+      deps = [r.total, 0, 0];
     } else {
-      months.push(t);
+      const fb = calcDepositsFallback(all);
+      if (fb.total > 0) deps = [fb.total, 0, 0];
     }
   }
 
-  const recent = months.slice(-3);
-  const deps = recent.map(m => calcMonthDeposits(m));
   while (deps.length < 3) deps.push(0);
 
   const obs = [];
-  if (bank === 'Banco no detectado') obs.push('No se pudo identificar el banco automaticamente. Verifica el resultado.');
-  if (deps.some(d => d === 0)) obs.push('Algunos meses estan en $0. Puede que el formato no sea compatible. Editar manualmente.');
-  if (obs.length === 0) obs.push('Analisis completado. Depositos = transferencias + abonos + nominas detectadas.');
+  if (bank === 'Banco no detectado') obs.push('No se pudo identificar el banco automaticamente.');
+  if (deps.every(d => d === 0)) {
+    obs.push('No se detectaron depositos automaticamente. Revisa el texto extraido y edita manualmente.');
+  } else {
+    obs.push('Analisis completado. Montos = depositos + transferencias + abonos detectados por el sistema.');
+  }
 
-  return { banco: bank, deps, obs: obs.join(' ') };
+  return { banco: bank, deps, obs: obs.join(' '), chunksCount: recent.length };
 }
 
 // ============================================================
@@ -489,6 +669,11 @@ function showDashboard(res) {
   bankInfo = { bank: res.banco, obs: res.obs };
   document.getElementById('dBank').textContent = res.banco;
   document.getElementById('dObs').textContent = res.obs;
+
+  // Show raw text in debug
+  if (window._rawText) {
+    document.getElementById('debugText').textContent = window._rawText.substring(0, 8000) + (window._rawText.length > 8000 ? '\n\n... [TRUNCADO - ' + window._rawText.length + ' caracteres total]' : '');
+  }
 
   const container = document.getElementById('depositFields');
   container.innerHTML = '';
@@ -573,6 +758,11 @@ CUOTA QUINCENAL: $${(cap/2).toFixed(2)}`;
     document.execCommand('copy');
     document.body.removeChild(ta);
   });
+}
+
+function toggleDebug() {
+  const box = document.getElementById('debugBox');
+  box.classList.toggle('hidden');
 }
 
 function resetAll() {
