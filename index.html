@@ -596,64 +596,85 @@ function splitByMonths(text) {
   return chunks;
 }
 
-// Calculate total credit/deposits in a text chunk
+// Calculate NET deposits (income - credit card payments) in a text chunk
 function calcDeposits(chunk) {
   const lines = chunk.split('\n');
-  let total = 0;
+  let totalIncome = 0;
+  let totalPayments = 0;
   let debugLines = [];
-
-  for (const line of lines) {
-    if (!hasDate(line)) continue; // skip non-transaction lines
-
-    const amounts = getAllAmounts(line);
-    if (amounts.length === 0) continue;
-
-    if (isCreditTransaction(line)) {
-      // Take the largest reasonable amount (not the balance)
-      const reasonable = amounts.filter(a => a < 10000000); // filter out balances
-      if (reasonable.length > 0) {
-        const maxAmt = Math.max(...reasonable);
-        total += maxAmt;
-        debugLines.push({line: line.substring(0,80), amt: maxAmt});
-      }
-    }
-  }
-
-  return { total, debugLines };
-}
-
-// Also try: sum ALL positive movements (not just keyword-matched)
-// This is the "fallback" approach for unknown formats
-function calcDepositsFallback(chunk) {
-  const lines = chunk.split('\n');
-  let total = 0;
-  let count = 0;
 
   for (const line of lines) {
     if (!hasDate(line)) continue;
     const amounts = getAllAmounts(line);
-    if (amounts.length < 2) continue; // Need at least 2 numbers (amount + balance)
+    if (amounts.length === 0) continue;
 
-    // In tabular format with 2 columns (debit/credit),
-    // we need to figure out which is which.
-    // Heuristic: if there are exactly 2 amounts and one is much larger,
-    // the smaller one is likely the transaction amount
-    // If there are 3+ amounts, the last one is usually the balance
+    const lower = line.toLowerCase();
+    const isCred = isCreditTransaction(line);
 
-    // Approach: take the second-to-last amount as the transaction
-    // (last is usually balance, second-to-last is the amount)
-    if (amounts.length >= 2) {
-      const transactionAmt = amounts[amounts.length - 2]; // second to last
-      const balance = amounts[amounts.length - 1]; // last = balance
-      // Only count if transaction is smaller than balance (likely a credit)
-      if (transactionAmt <= balance && transactionAmt > 0) {
-        total += transactionAmt;
-        count++;
+    // Detect credit card payments / debits
+    const isDebit = /d[eé]bito|retiro|cargo|comisi[oó]n|impuesto|iva|pago\s*(?:de|por|tc|tarjeta)|giro|mora|descuento|dcto|not\s*de\s*cr|cobro|servicio|mantenimiento|transferencia\s*(?:saliente|emitida|propia)/i.test(lower);
+
+    if (isCred && !isDebit) {
+      const reasonable = amounts.filter(a => a < 10000000);
+      if (reasonable.length > 0) {
+        const amt = Math.max(...reasonable);
+        totalIncome += amt;
+        debugLines.push({type: 'INGRESO', line: line.substring(0,80), amt});
+      }
+    } else if (isDebit) {
+      const reasonable = amounts.filter(a => a < 10000000);
+      if (reasonable.length > 0) {
+        const amt = Math.max(...reasonable);
+        totalPayments += amt;
+        debugLines.push({type: 'PAGO', line: line.substring(0,80), amt});
       }
     }
   }
 
-  return { total, count };
+  return { totalIncome, totalPayments, net: totalIncome - totalPayments, debugLines };
+}
+
+// Fallback: sum ALL movements and try to determine income vs expenses by position
+function calcDepositsFallback(chunk) {
+  const lines = chunk.split('\n');
+  let totalIncome = 0;
+  let totalPayments = 0;
+
+  for (const line of lines) {
+    if (!hasDate(line)) continue;
+    const amounts = getAllAmounts(line);
+    if (amounts.length < 2) continue;
+
+    // In Venezuelan bank statements:
+    // Format 1: FECHA | DESCRIPCION | DEBITO | CREDITO | SALDO
+    // Format 2: FECHA | DESCRIPCION | MONTO | SALDO
+    // We try to figure out which columns are which
+
+    if (amounts.length >= 3) {
+      // Likely: debit, credit, balance
+      // Or: amount, balance, something
+      // The LARGEST is usually balance. The smallest positive = transaction
+      const sorted = [...amounts].sort((a,b) => a-b);
+      const balance = sorted[sorted.length - 1];
+      const transAmount = sorted[0]; // smallest is usually the transaction
+
+      // Check if this looks like income (amount < balance)
+      if (transAmount < balance && transAmount > 0) {
+        totalIncome += transAmount;
+      }
+    } else if (amounts.length === 2) {
+      // Could be: transaction + balance, or debit + credit
+      const [a, b] = amounts;
+      if (a < b) {
+        totalIncome += a; // smaller = transaction, larger = balance
+      } else {
+        totalPayments += b;
+      }
+    }
+  }
+
+  const net = totalIncome - totalPayments;
+  return { totalIncome, totalPayments, net };
 }
 
 function analyzeTexts(texts) {
@@ -688,33 +709,42 @@ function analyzeTexts(texts) {
   const recent = chunks.slice(-3);
   const recentDates = chunkDates.slice(-3);
 
-  // Calculate deposits for each chunk
-  let deps = recent.map(c => {
-    const r = calcDeposits(c);
-    return r.total;
-  });
+  // Calculate NET deposits for each chunk (income - credit card payments)
+  let depIncomes = recent.map(c => calcDeposits(c).totalIncome);
+  let depPayments = recent.map(c => calcDeposits(c).totalPayments);
+  let deps = recent.map((c, i) => depIncomes[i] - depPayments[i]);
 
   // If all zeros, try fallback approach
   if (deps.every(d => d === 0)) {
-    deps = recent.map(c => {
-      const r = calcDepositsFallback(c);
-      return r.total;
-    });
+    const fb = recent.map(c => calcDepositsFallback(c));
+    depIncomes = fb.map(r => r.totalIncome);
+    depPayments = fb.map(r => r.totalPayments);
+    deps = fb.map(r => r.net);
   }
 
   // If still all zeros, try treating the whole text as one chunk
   if (deps.every(d => d === 0) && recent.length > 0) {
     const r = calcDeposits(all);
-    if (r.total > 0) {
-      deps = [r.total, 0, 0];
+    if (r.totalIncome > 0) {
+      depIncomes = [r.totalIncome, 0, 0];
+      depPayments = [r.totalPayments, 0, 0];
+      deps = [r.net, 0, 0];
     } else {
       const fb = calcDepositsFallback(all);
-      if (fb.total > 0) deps = [fb.total, 0, 0];
+      if (fb.totalIncome > 0) {
+        depIncomes = [fb.totalIncome, 0, 0];
+        depPayments = [fb.totalPayments, 0, 0];
+        deps = [fb.net, 0, 0];
+      }
     }
   }
 
-  while (deps.length < 3) deps.push(0);
+  while (deps.length < 3) { deps.push(0); depIncomes.push(0); depPayments.push(0); }
   while (recentDates.length < 3) recentDates.push(null);
+
+  // Store income/payment breakdown for display
+  window._depIncomes = depIncomes;
+  window._depPayments = depPayments;
 
   // Now handle currency conversion
   let ratesUsed = [null, null, null];
@@ -774,7 +804,7 @@ function analyzeTexts(texts) {
     obs.push('Analisis completado.');
   }
 
-  return { banco: bank, deps, obs: obs.join(' '), chunksCount: recent.length, isVES, ratesUsed };
+  return { banco: bank, deps, obs: obs.join(' '), chunksCount: recent.length, isVES, ratesUsed, depIncomes, depPayments };
 }
 
 // ============================================================
@@ -853,6 +883,9 @@ function showDashboard(res) {
     currEl.innerHTML = '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-300">USD Detectado</span>';
   }
 
+  const incomes = window._depIncomes || [0,0,0];
+  const payments = window._depPayments || [0,0,0];
+
   const container = document.getElementById('depositFields');
   container.innerHTML = '';
   const labels = ['Mes 1 (reciente)', 'Mes 2', 'Mes 3 (antiguo)'];
@@ -866,12 +899,22 @@ function showDashboard(res) {
           <svg class="h-3.5 w-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
           <span class="text-xs text-slate-400 font-medium">${l}</span>
         </div>
-        <p class="text-lg font-bold text-white tabular-nums" id="depVal${i}">$${deps[i].toFixed(2)}</p>
+        <div class="flex items-center gap-1 mb-1">
+          <span class="text-[10px] text-emerald-400">+${formatNum(incomes[i])}</span>
+          <span class="text-[10px] text-slate-600">/</span>
+          <span class="text-[10px] text-red-400">-${formatNum(payments[i])}</span>
+        </div>
+        <p class="text-lg font-bold ${deps[i] >= 0 ? 'text-white' : 'text-red-400'} tabular-nums" id="depVal${i}">$${deps[i].toFixed(2)}</p>
         ${window._isVES && rate ? '<p class="text-[10px] text-amber-400/70 mt-0.5">Tasa BCV ' + dateLabel + ': ' + rate.toFixed(2) + ' Bs/$</p>' : ''}
         <button onclick="editDeposit(${i})" class="opacity-0 group-hover:opacity-100 transition-opacity mt-1 text-[10px] text-indigo-400 hover:text-indigo-300">Editar</button>
       </div>`;
   });
   recalc();
+}
+
+function formatNum(n) {
+  if (n === 0) return '$0';
+  return '$' + n.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 }
 
 function editDeposit(i) {
@@ -908,18 +951,20 @@ function recalc() {
 function copyReport() {
   const prom = (deps[0] + deps[1] + deps[2]) / 3;
   const cap = prom * (porcentaje / 100);
+  const incomes = window._depIncomes || [0,0,0];
+  const payments = window._depPayments || [0,0,0];
   const txt = `=== REPORTE DE CAPACIDAD DE PAGO ===
 Fecha: ${new Date().toLocaleDateString('es-VE')}
 
 Banco: ${bankInfo.bank}
 Observaciones: ${bankInfo.obs}
 
-DEPOSITOS:
-  Mes 1: $${deps[0].toFixed(2)}
-  Mes 2: $${deps[1].toFixed(2)}
-  Mes 3: $${deps[2].toFixed(2)}
+FLUJO NETO MENSUAL:
+  Mes 1: Ingresos $${incomes[0].toFixed(2)} - Pagos $${payments[0].toFixed(2)} = NETO $${deps[0].toFixed(2)}
+  Mes 2: Ingresos $${incomes[1].toFixed(2)} - Pagos $${payments[1].toFixed(2)} = NETO $${deps[1].toFixed(2)}
+  Mes 3: Ingresos $${incomes[2].toFixed(2)} - Pagos $${payments[2].toFixed(2)} = NETO $${deps[2].toFixed(2)}
 
-PROMEDIO MENSUAL: $${prom.toFixed(2)}
+PROMEDIO NETO MENSUAL: $${prom.toFixed(2)}
 CAPACIDAD DE PAGO (${porcentaje}%): $${cap.toFixed(2)}
 
 LIMITE CREDITO GLOBAL: $${(cap*2).toFixed(2)}
