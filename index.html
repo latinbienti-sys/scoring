@@ -1,1019 +1,808 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CreditScorer AI - Analisis de Capacidad de Pago</title>
-<script src="https://cdn.tailwindcss.com"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<style>
-  * { font-family: 'Inter', sans-serif; }
-  body { background: #020617; color: #e2e8f0; }
-  ::-webkit-scrollbar { width: 6px; }
-  ::-webkit-scrollbar-track { background: #0f172a; }
-  ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
-  input[type=range] { -webkit-appearance: none; height: 6px; background: #334155; border-radius: 3px; outline: none; }
-  input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 20px; height: 20px; border-radius: 50%; background: #6366f1; cursor: pointer; border: 2px solid #1e293b; box-shadow: 0 0 0 3px rgba(99,102,241,0.2); }
-  input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 5px rgba(99,102,241,0.3); }
-  input[type=number]::-webkit-inner-spin-button,
-  input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
-  input[type=number] { -moz-appearance: textfield; }
-  .grid-bg { background-image: linear-gradient(rgba(99,102,241,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(99,102,241,0.03) 1px, transparent 1px); background-size: 40px 40px; }
-  .top-line { position: fixed; top: 0; left: 0; right: 0; height: 1px; background: linear-gradient(90deg, transparent, rgba(99,102,241,0.5), transparent); z-index: 50; }
-  .fade-in { animation: fadeIn 0.4s ease-out; }
-  @keyframes fadeIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
-  @keyframes pulse-bar { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
-  .pulse-bar { animation: pulse-bar 1.5s ease-in-out infinite; }
-  @keyframes spin { to { transform: rotate(360deg); } }
-  .spinner { animation: spin 0.8s linear infinite; }
-  .drag-over { border-color: #818cf8 !important; background: rgba(99,102,241,0.1) !important; transform: scale(1.02); }
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CreditScorer - Analisis de Estados de Cuenta Bancarios</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body { font-family: 'Inter', sans-serif; margin: 0; background: #020617; color: #e2e8f0; }
+    .slot { border: 2px dashed #475569; border-radius: 12px; padding: 24px; text-align: center; transition: all .2s; cursor: pointer; position: relative; min-height: 140px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    .slot:hover, .slot.dragover { border-color: #818cf8; background: rgba(129,140,248,.08); }
+    .slot.filled { border-color: #34d399; background: rgba(52,211,153,.06); }
+    .slot.filled .slot-placeholder { display: none; }
+    .slot .file-info { display: none; }
+    .slot.filled .file-info { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+    .slot .remove-btn { display: none; position: absolute; top: 8px; right: 8px; background: #ef4444; color: #fff; border: none; border-radius: 50%; width: 22px; height: 22px; font-size: 12px; cursor: pointer; line-height: 22px; text-align: center; }
+    .slot.filled .remove-btn { display: block; }
+    .progress-bar { height: 4px; background: #1e293b; border-radius: 2px; overflow: hidden; margin-top: 12px; }
+    .progress-bar .fill { height: 100%; background: linear-gradient(90deg, #818cf8, #34d399); width: 0%; transition: width .3s; border-radius: 2px; }
+    .card { background: #0f172a; border: 1px solid #1e293b; border-radius: 16px; padding: 24px; }
+    .metric { text-align: center; }
+    .metric .value { font-size: 1.75rem; font-weight: 800; line-height: 1.2; }
+    .metric .label { font-size: .75rem; color: #94a3b8; margin-top: 4px; text-transform: uppercase; letter-spacing: .05em; }
+    .month-card { background: #1e293b; border-radius: 12px; padding: 16px; }
+    .slider-track { -webkit-appearance: none; appearance: none; width: 100%; height: 6px; border-radius: 3px; background: #334155; outline: none; }
+    .slider-track::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 20px; height: 20px; border-radius: 50%; background: #818cf8; cursor: pointer; border: 2px solid #0f172a; }
+    .debug-table { width: 100%; border-collapse: collapse; font-size: .75rem; }
+    .debug-table th, .debug-table td { padding: 6px 10px; border-bottom: 1px solid #1e293b; text-align: left; }
+    .debug-table th { color: #94a3b8; font-weight: 600; position: sticky; top: 0; background: #1e293b; }
+    .debug-table td { color: #cbd5e1; }
+    .debug-wrap { max-height: 400px; overflow: auto; border-radius: 8px; border: 1px solid #1e293b; }
+    .btn { padding: 10px 20px; border-radius: 10px; font-weight: 600; font-size: .875rem; cursor: pointer; border: none; transition: all .15s; }
+    .btn-primary { background: #6366f1; color: #fff; }
+    .btn-primary:hover { background: #818cf8; }
+    .btn-primary:disabled { opacity: .4; cursor: not-allowed; }
+    .btn-secondary { background: #1e293b; color: #e2e8f0; border: 1px solid #334155; }
+    .btn-secondary:hover { background: #334155; }
+    .btn-success { background: #059669; color: #fff; }
+    .btn-success:hover { background: #10b981; }
+    .btn-danger { background: #dc2626; color: #fff; }
+    .btn-danger:hover { background: #ef4444; }
+    .fade-in { animation: fadeIn .4s ease-out; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+    .spinner { width: 18px; height: 18px; border: 2px solid rgba(255,255,255,.2); border-top-color: #fff; border-radius: 50%; animation: spin .6s linear infinite; display: inline-block; vertical-align: middle; margin-right: 8px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .badge { display: inline-block; padding: 3px 10px; border-radius: 9999px; font-size: .7rem; font-weight: 600; }
+  </style>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            slate: { 950: '#020617' }
+          }
+        }
+      }
+    }
+  </script>
 </head>
 <body class="min-h-screen">
-<div class="grid-bg fixed inset-0 pointer-events-none"></div>
-<div class="top-line"></div>
 
-<div class="relative max-w-4xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
-
-  <!-- HEADER -->
-  <header class="text-center mb-10">
-    <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 mb-4">
-      <svg class="h-3.5 w-3.5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
-      <span class="text-xs font-medium text-indigo-300">Analisis Automatico - Gratis</span>
+<!-- HEADER -->
+<header class="border-b border-slate-800 bg-slate-950/80 backdrop-blur sticky top-0 z-50">
+  <div class="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <div class="w-9 h-9 rounded-lg bg-indigo-600 flex items-center justify-center">
+        <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+      </div>
+      <h1 class="text-xl font-bold tracking-tight">CreditScorer</h1>
     </div>
-    <h1 class="text-3xl sm:text-4xl font-extrabold tracking-tight">
-      Credit<span class="bg-gradient-to-r from-indigo-400 to-emerald-400 bg-clip-text text-transparent">Scorer</span>
-    </h1>
-    <p class="text-sm text-slate-400 mt-2 max-w-lg mx-auto">
-      Sube tus estados de cuenta PDF y obtene tu capacidad de pago y limites de credito.
-      <span class="text-emerald-400 font-medium">100% gratis, sin API key.</span>
-    </p>
-    <div class="flex flex-wrap items-center justify-center gap-4 mt-5">
-      <div class="flex items-center gap-1.5 text-xs text-slate-500"><svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>100% Gratis</div>
-      <div class="flex items-center gap-1.5 text-xs text-slate-500"><svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>Sin API key</div>
-      <div class="flex items-center gap-1.5 text-xs text-slate-500"><svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>Resultados al instante</div>
-    </div>
-  </header>
-
-  <!-- UPLOAD SECTION (id="uploadSection") -->
-  <div id="uploadSection">
-    <div class="rounded-2xl bg-slate-900/60 border border-slate-800/60 p-5 backdrop-blur-sm mb-6">
-      <div class="flex items-center gap-2 mb-2">
-        <svg class="h-5 w-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
-        <h3 class="text-sm font-semibold text-slate-200 uppercase tracking-wider">Estados de Cuenta Bancarios</h3>
-      </div>
-      <p class="text-xs text-slate-400 mb-4">Sube hasta 3 archivos PDF. Del mas reciente al mas antiguo.</p>
-
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-4" id="fileSlots"></div>
-
-      <div class="flex items-center gap-2 text-xs text-slate-500 mt-4" id="fileCount">
-        <svg class="h-3.5 w-3.5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-        <span>Carga al menos 1 archivo para continuar</span>
-      </div>
-
-      <!-- Processing -->
-      <div id="processingBox" class="hidden mt-4 p-4 rounded-xl bg-indigo-500/10 border border-indigo-500/30">
-        <div class="flex items-center gap-3">
-          <svg class="h-5 w-5 text-indigo-400 spinner" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-          <div>
-            <p class="text-sm font-medium text-indigo-300">Procesando...</p>
-            <p class="text-xs text-slate-400 mt-0.5" id="processingStep">Leyendo PDF...</p>
-          </div>
-        </div>
-        <div class="mt-3 w-full bg-slate-700/50 rounded-full h-1.5">
-          <div class="bg-indigo-500 h-1.5 rounded-full pulse-bar" style="width:60%"></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Error -->
-    <div id="errorBox" class="hidden rounded-xl bg-red-500/10 border border-red-500/30 p-4 mb-6">
-      <div class="flex items-start gap-3">
-        <div class="flex items-center justify-center w-8 h-8 rounded-full bg-red-500/20 shrink-0"><span class="text-red-400 text-sm font-bold">!</span></div>
-        <div><p class="text-sm font-medium text-red-300">Error</p><p class="text-xs text-slate-400 mt-1" id="errorText"></p></div>
-      </div>
-    </div>
-
-    <!-- Analyze Button -->
-    <button id="analyzeBtn" onclick="analyze()" disabled
-      class="w-full flex items-center justify-center gap-3 py-4 px-6 rounded-xl text-base font-semibold transition-all duration-300 bg-slate-800/50 text-slate-500 cursor-not-allowed border border-slate-700/50 mb-6">
-      <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-      Analizar Estados de Cuenta
-      <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3"/></svg>
-    </button>
-
-    <!-- Steps -->
-    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-      <div class="flex items-start gap-3 p-4 rounded-xl bg-slate-900/40 border border-slate-800/40">
-        <div class="flex items-center justify-center w-7 h-7 rounded-lg bg-indigo-500/15 shrink-0"><span class="text-xs font-bold text-indigo-400">1</span></div>
-        <div><p class="text-sm font-semibold text-slate-200">Sube tus PDFs</p><p class="text-xs text-slate-500 mt-0.5">Arrastra tus estados de cuenta</p></div>
-      </div>
-      <div class="flex items-start gap-3 p-4 rounded-xl bg-slate-900/40 border border-slate-800/40">
-        <div class="flex items-center justify-center w-7 h-7 rounded-lg bg-indigo-500/15 shrink-0"><span class="text-xs font-bold text-indigo-400">2</span></div>
-        <div><p class="text-sm font-semibold text-slate-200">Analisis automatico</p><p class="text-xs text-slate-500 mt-0.5">Detecta banco y suma depositos</p></div>
-      </div>
-      <div class="flex items-start gap-3 p-4 rounded-xl bg-slate-900/40 border border-slate-800/40">
-        <div class="flex items-center justify-center w-7 h-7 rounded-lg bg-indigo-500/15 shrink-0"><span class="text-xs font-bold text-indigo-400">3</span></div>
-        <div><p class="text-sm font-semibold text-slate-200">Obten tu Score</p><p class="text-xs text-slate-500 mt-0.5">Capacidad de pago al instante</p></div>
-      </div>
+    <div class="flex items-center gap-2">
+      <span class="badge bg-emerald-500/15 text-emerald-400">100% Gratis</span>
+      <span class="badge bg-indigo-500/15 text-indigo-400">Sin API key</span>
+      <span class="badge bg-amber-500/15 text-amber-400">Resultados al instante</span>
     </div>
   </div>
+</header>
 
-  <!-- DASHBOARD (id="dashboard", hidden initially) -->
-  <div id="dashboard" class="hidden fade-in space-y-6">
+<main class="max-w-6xl mx-auto px-4 py-8">
 
-    <div class="flex items-center justify-between flex-wrap gap-3">
-      <div>
-        <h2 class="text-xl font-bold text-white flex items-center gap-2">
-          <svg class="h-5 w-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
-          Resultado del Analisis
-        </h2>
-        <p class="text-xs text-slate-400 mt-1">Haz clic en el lapiz para corregir valores</p>
-      </div>
-      <button onclick="copyReport()" id="copyBtn"
-        class="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-slate-700/50 text-slate-300 border border-slate-600/50 hover:bg-slate-700 hover:border-slate-500 transition-all">
-        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/></svg>
-        <span id="copyText">Exportar Reporte</span>
-      </button>
-    </div>
+  <!-- INTRO -->
+  <div class="text-center mb-10">
+    <h2 class="text-3xl font-extrabold mb-2 bg-gradient-to-r from-indigo-400 to-emerald-400 bg-clip-text text-transparent">Analisis de Credit Score</h2>
+    <p class="text-slate-400 max-w-xl mx-auto text-sm">Sube tus estados de cuenta bancarios en PDF y obtene un analisis completo de tus ingresos, gastos y capacidad de endeudamiento.</p>
+  </div>
 
-    <!-- Bank Info -->
-    <div class="rounded-xl bg-gradient-to-r from-indigo-500/10 to-slate-800/50 border border-indigo-500/20 p-5">
-      <div class="flex items-start gap-4">
-        <div class="flex items-center justify-center w-12 h-12 rounded-xl bg-indigo-500/20 shrink-0">
-          <svg class="h-6 w-6 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
-        </div>
-        <div class="flex-1">
-          <h3 class="text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">Banco Detectado</h3>
-          <p class="text-lg font-bold text-white" id="dBank">-</p>
-          <div class="mt-2 flex items-start gap-2">
-            <svg class="h-3.5 w-3.5 text-amber-400 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
-            <p class="text-xs text-slate-400 leading-relaxed" id="dObs">-</p>
+  <!-- UPLOAD SECTION -->
+  <section id="uploadSection">
+    <div class="card">
+      <h3 class="text-lg font-semibold mb-4 flex items-center gap-2">
+        <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+        Subir Estados de Cuenta (PDF)
+      </h3>
+      <p class="text-slate-400 text-sm mb-6">Arrastra y suelta hasta 3 archivos PDF. Se procesaran automaticamente.</p>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <div class="slot" id="slot0" data-index="0" onclick="document.getElementById('fileInput0').click()">
+          <input type="file" id="fileInput0" accept=".pdf" class="hidden" onchange="handleFile(0, this.files[0])">
+          <div class="slot-placeholder">
+            <svg class="w-8 h-8 text-slate-500 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+            <span class="text-slate-400 text-sm">Archivo 1</span>
           </div>
+          <div class="file-info">
+            <svg class="w-8 h-8 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            <span class="text-sm font-medium text-emerald-300 fileName"></span>
+            <span class="text-xs text-slate-500 fileSize"></span>
+          </div>
+          <button class="remove-btn" onclick="event.stopPropagation(); removeFile(0)">&times;</button>
+        </div>
+
+        <div class="slot" id="slot1" data-index="1" onclick="document.getElementById('fileInput1').click()">
+          <input type="file" id="fileInput1" accept=".pdf" class="hidden" onchange="handleFile(1, this.files[0])">
+          <div class="slot-placeholder">
+            <svg class="w-8 h-8 text-slate-500 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+            <span class="text-slate-400 text-sm">Archivo 2</span>
+          </div>
+          <div class="file-info">
+            <svg class="w-8 h-8 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            <span class="text-sm font-medium text-emerald-300 fileName"></span>
+            <span class="text-xs text-slate-500 fileSize"></span>
+          </div>
+          <button class="remove-btn" onclick="event.stopPropagation(); removeFile(1)">&times;</button>
+        </div>
+
+        <div class="slot" id="slot2" data-index="2" onclick="document.getElementById('fileInput2').click()">
+          <input type="file" id="fileInput2" accept=".pdf" class="hidden" onchange="handleFile(2, this.files[0])">
+          <div class="slot-placeholder">
+            <svg class="w-8 h-8 text-slate-500 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+            <span class="text-slate-400 text-sm">Archivo 3</span>
+          </div>
+          <div class="file-info">
+            <svg class="w-8 h-8 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            <span class="text-sm font-medium text-emerald-300 fileName"></span>
+            <span class="text-xs text-slate-500 fileSize"></span>
+          </div>
+          <button class="remove-btn" onclick="event.stopPropagation(); removeFile(2)">&times;</button>
         </div>
       </div>
-    </div>
 
-    <!-- Editable Deposits -->
-    <div class="rounded-xl bg-slate-800/40 border border-slate-700/50 p-5">
-      <div class="flex items-center gap-2 mb-4">
-        <svg class="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-        <h3 class="text-sm font-semibold text-slate-300 uppercase tracking-wider">Depositos Extraidos</h3>
-      </div>
-      <div id="currencyInfo" class="mb-3"></div>
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-4" id="depositFields"></div>
-    </div>
-
-    <!-- Slider -->
-    <div class="rounded-xl bg-slate-800/40 border border-slate-700/50 p-5">
-      <div class="flex items-center gap-2 mb-4">
-        <svg class="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg>
-        <h3 class="text-sm font-semibold text-slate-300 uppercase tracking-wider">Capacidad de Pago (% sobre promedio)</h3>
-      </div>
       <div class="flex items-center gap-4">
-        <input type="range" min="10" max="50" step="1" value="30" id="pctSlider" oninput="updatePct(this.value)" class="flex-1">
-        <div class="flex items-center gap-1 px-3 py-1.5 bg-indigo-500/10 border border-indigo-500/30 rounded-lg min-w-[70px] justify-center">
-          <span class="text-lg font-bold text-indigo-300 tabular-nums" id="pctVal">30</span>
-          <span class="text-xs text-indigo-400">%</span>
-        </div>
+        <button class="btn btn-primary" id="analyzeBtn" disabled onclick="runAnalysis()">
+          <span id="analyzeBtnText">Analizar</span>
+        </button>
+        <span id="fileCount" class="text-sm text-slate-500">0 archivos seleccionados</span>
       </div>
-      <div class="flex justify-between text-[10px] text-slate-500 px-1 mt-1">
-        <span>10% Conservador</span><span>30% Estandar</span><span>50% Agresivo</span>
+
+      <div class="progress-bar mt-4" id="progressBar" style="display:none">
+        <div class="fill" id="progressFill"></div>
+      </div>
+      <p id="statusText" class="text-xs text-slate-500 mt-2 hidden"></p>
+    </div>
+  </section>
+
+  <!-- DASHBOARD SECTION -->
+  <section id="dashboardSection" class="hidden mt-8 fade-in">
+
+    <!-- Summary Row -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div class="card metric">
+        <div class="value text-indigo-400" id="mBank">-</div>
+        <div class="label">Banco Detectado</div>
+      </div>
+      <div class="card metric">
+        <div class="value text-amber-400" id="mCurrency">-</div>
+        <div class="label">Moneda</div>
+      </div>
+      <div class="card metric">
+        <div class="value text-slate-200" id="mRows">-</div>
+        <div class="label">Transacciones</div>
+      </div>
+      <div class="card metric">
+        <div class="value text-slate-200" id="mMonths">-</div>
+        <div class="label">Meses Analizados</div>
       </div>
     </div>
 
-    <!-- Result Cards -->
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-      <div class="rounded-xl bg-gradient-to-br from-slate-800/60 to-slate-800/30 border border-slate-700/50 p-5">
-        <div class="flex items-center gap-3 mb-3">
-          <div class="flex items-center justify-center w-10 h-10 rounded-xl bg-blue-500/15">
-            <svg class="h-5 w-5 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-          </div>
-          <div><p class="text-xs text-slate-400 font-medium">Deposito Promedio Mensual</p><p class="text-[10px] text-slate-500">Promedio de los 3 meses</p></div>
-        </div>
-        <p class="text-2xl font-bold text-white tabular-nums" id="dPromedio">$0.00</p>
-      </div>
-      <div class="rounded-xl bg-gradient-to-br from-indigo-800/30 to-indigo-900/10 border border-indigo-500/20 p-5">
-        <div class="flex items-center gap-3 mb-3">
-          <div class="flex items-center justify-center w-10 h-10 rounded-xl bg-indigo-500/15">
-            <svg class="h-5 w-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg>
-          </div>
-          <div><p class="text-xs text-slate-400 font-medium">Capacidad de Pago Mensual</p><p class="text-[10px] text-slate-500"><span id="dPctLabel">30</span>% del promedio</p></div>
-        </div>
-        <p class="text-2xl font-bold text-indigo-300 tabular-nums" id="dCapacidad">$0.00</p>
+    <!-- Monthly Breakdown -->
+    <div class="card mb-6">
+      <h3 class="text-lg font-semibold mb-4 flex items-center gap-2">
+        <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+        Desglose Mensual
+      </h3>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4" id="monthlyGrid"></div>
+    </div>
+
+    <!-- Editable Amounts -->
+    <div class="card mb-6">
+      <h3 class="text-lg font-semibold mb-4 flex items-center gap-2">
+        <svg class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+        Montos Editables
+      </h3>
+      <p class="text-slate-400 text-sm mb-4">Puedes ajustar los montos manualmente para corregir errores de extraccion.</p>
+      <div class="overflow-x-auto">
+        <table class="debug-table" id="editableTable">
+          <thead>
+            <tr>
+              <th>Mes</th>
+              <th>Ingresos (Abonos)</th>
+              <th>Gastos (Cargos)</th>
+              <th>Neto</th>
+            </tr>
+          </thead>
+          <tbody id="editableBody"></tbody>
+        </table>
       </div>
     </div>
 
-    <!-- Credit Limits -->
-    <div class="rounded-xl bg-gradient-to-br from-emerald-800/20 to-emerald-900/5 border border-emerald-500/20 p-6">
-      <div class="flex items-center gap-2 mb-5">
-        <svg class="h-5 w-5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-        <h3 class="text-sm font-semibold text-emerald-300 uppercase tracking-wider">Limites de Credito Calculados</h3>
-      </div>
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div>
-          <p class="text-xs text-slate-400 font-medium mb-1">Limite de Credito Global</p>
-          <p class="text-3xl font-bold text-emerald-300 tabular-nums" id="dLimite">$0.00</p>
-          <p class="text-[10px] text-slate-500 mt-1">Capacidad de Pago x 2</p>
-        </div>
-        <div>
-          <p class="text-xs text-slate-400 font-medium mb-1">Cuota Quincenal Maxima</p>
-          <p class="text-3xl font-bold text-emerald-300 tabular-nums" id="dCuota">$0.00</p>
-          <p class="text-[10px] text-slate-500 mt-1">Capacidad de Pago / 2</p>
-        </div>
+    <!-- Capacity Slider -->
+    <div class="card mb-6">
+      <h3 class="text-lg font-semibold mb-4 flex items-center gap-2">
+        <svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        Porcentaje de Capacidad de Pago
+      </h3>
+      <div class="flex items-center gap-4">
+        <span class="text-sm text-slate-400">10%</span>
+        <input type="range" min="10" max="50" value="30" id="capacitySlider" class="slider-track flex-1" oninput="updateCapacity()">
+        <span class="text-sm text-slate-400">50%</span>
+        <span class="text-lg font-bold text-indigo-400 ml-2" id="sliderValue">30%</span>
       </div>
     </div>
 
-    <!-- Debug: ver texto extraido -->
-    <div class="rounded-xl bg-slate-800/40 border border-slate-700/50 p-4">
-      <button onclick="toggleDebug()" class="flex items-center gap-2 text-xs text-slate-500 hover:text-slate-300 transition-colors">
-        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>
-        Ver texto extraido del PDF (debug)
+    <!-- Results -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div class="card metric">
+        <div class="value text-indigo-400" id="rPromedio">-</div>
+        <div class="label">Promedio Mensual Neto</div>
+      </div>
+      <div class="card metric">
+        <div class="value text-emerald-400" id="rCapacidad">-</div>
+        <div class="label">Capacidad de Pago</div>
+      </div>
+      <div class="card metric">
+        <div class="value text-amber-400" id="rLimite">-</div>
+        <div class="label">Limite Credito Global</div>
+      </div>
+      <div class="card metric">
+        <div class="value text-rose-400" id="rCuota">-</div>
+        <div class="label">Cuota Quincenal</div>
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="flex items-center gap-3 mb-6">
+      <button class="btn btn-success" onclick="copyReport()">
+        <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+        Copiar Reporte
       </button>
-      <div id="debugBox" class="hidden mt-3">
-        <pre id="debugText" class="text-[10px] text-slate-400 bg-slate-900/80 rounded-lg p-3 max-h-64 overflow-auto whitespace-pre-wrap break-all border border-slate-700/30"></pre>
-      </div>
+      <button class="btn btn-secondary" onclick="toggleDebug()">
+        <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>
+        Datos Extraidos
+      </button>
+      <button class="btn btn-danger" onclick="resetAll()">
+        <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+        Reiniciar
+      </button>
     </div>
 
-    <!-- Reset -->
-    <button onclick="resetAll()"
-      class="w-full flex items-center justify-center gap-2 py-3 px-6 rounded-xl text-sm font-medium bg-slate-800/50 text-slate-300 border border-slate-700/50 hover:bg-slate-800 hover:border-slate-600 transition-all duration-300">
-      <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-      Nuevo Analisis
-    </button>
-  </div>
+    <!-- Debug Section -->
+    <div class="card hidden" id="debugSection">
+      <h3 class="text-lg font-semibold mb-4 flex items-center gap-2">
+        <svg class="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>
+        Datos Extraidos (Debug)
+      </h3>
+      <div class="debug-wrap" id="debugContent"></div>
+    </div>
 
-  <footer class="text-center mt-12 pt-6 border-t border-slate-800/50">
-    <p class="text-xs text-slate-600">CreditScorer AI - Analisis crediticio automatizado, 100% gratis</p>
-  </footer>
-</div>
+  </section>
+</main>
+
+<!-- FOOTER -->
+<footer class="border-t border-slate-800 mt-12 py-6 text-center text-xs text-slate-600">
+  CreditScorer &mdash; Analisis local. Tus datos nunca salen de tu navegador.
+</footer>
 
 <script>
-// ============================================================
-// CONFIG
-// ============================================================
+// ============================================
+// STATE
+// ============================================
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
-const MONTH_LABELS = ['Mes 1 (mas reciente)', 'Mes 2', 'Mes 3 (mas antiguo)'];
-let selectedFiles = [null, null, null];
-let porcentaje = 30;
+const STATE = {
+  files: [null, null, null],
+  allRows: [],
+  monthlyData: [],
+  bank: '',
+  currency: '',
+  capacityPct: 30
+};
 
-// ============================================================
-// INIT FILE SLOTS
-// ============================================================
-function initSlots() {
-  const container = document.getElementById('fileSlots');
-  container.innerHTML = '';
-  MONTH_LABELS.forEach((label, i) => {
-    const div = document.createElement('div');
-    div.id = 'slot-' + i;
-    div.className = 'relative group rounded-xl border-2 border-dashed border-slate-600/50 bg-slate-800/30 hover:border-slate-500/70 hover:bg-slate-800/50 transition-all duration-300';
-    div.innerHTML = `
-      <input type="file" accept=".pdf" onchange="onFileSelect(event,${i})" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10">
-      <div class="p-4 flex flex-col items-center justify-center min-h-[140px] text-center">
-        <div class="flex items-center justify-center w-10 h-10 rounded-full bg-slate-700/50 group-hover:bg-slate-700/80 transition-colors">
-          <svg class="h-5 w-5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
-        </div>
-        <p class="text-xs font-medium text-slate-300 mt-2">${label}</p>
-        <p class="text-[10px] text-slate-500 mt-0.5">Arrastra o haz clic</p>
-      </div>`;
-
-    div.addEventListener('dragover', e => { e.preventDefault(); div.classList.add('drag-over'); });
-    div.addEventListener('dragleave', e => { e.preventDefault(); div.classList.remove('drag-over'); });
-    div.addEventListener('drop', e => {
-      e.preventDefault(); div.classList.remove('drag-over');
-      const f = Array.from(e.dataTransfer.files).find(x => x.type === 'application/pdf');
-      if (f) setFile(i, f);
-    });
-    container.appendChild(div);
-  });
+// ============================================
+// FILE HANDLING
+// ============================================
+function formatSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / 1048576).toFixed(1) + ' MB';
 }
 
-function onFileSelect(e, idx) {
-  const f = e.target.files[0];
-  if (f && f.type === 'application/pdf') setFile(idx, f);
-}
-
-function setFile(idx, file) {
-  selectedFiles[idx] = file;
-  const slot = document.getElementById('slot-' + idx);
-  slot.className = 'relative group rounded-xl border-2 border-dashed border-emerald-500/50 bg-emerald-500/5 transition-all duration-300';
-  slot.innerHTML = `
-    <input type="file" accept=".pdf" onchange="onFileSelect(event,${idx})" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10">
-    <button onclick="event.stopPropagation();event.preventDefault();removeFile(${idx})" class="absolute top-2 right-2 p-1 rounded-full bg-slate-700/80 hover:bg-red-500/80 transition-colors z-20">
-      <svg class="h-3 w-3 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-    </button>
-    <div class="p-4 flex flex-col items-center justify-center min-h-[140px] text-center">
-      <div class="flex items-center justify-center w-10 h-10 rounded-full bg-emerald-500/20 mb-2">
-        <svg class="h-5 w-5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-      </div>
-      <p class="text-xs font-medium text-emerald-300 truncate max-w-full px-2">${file.name}</p>
-      <p class="text-[10px] text-slate-400 mt-1">${(file.size/1024/1024).toFixed(2)} MB</p>
-    </div>`;
-  updateBtn();
+function handleFile(idx, file) {
+  if (!file || file.type !== 'application/pdf') {
+    alert('Solo se aceptan archivos PDF.');
+    return;
+  }
+  STATE.files[idx] = file;
+  const slot = document.getElementById('slot' + idx);
+  slot.classList.add('filled');
+  slot.querySelector('.fileName').textContent = file.name;
+  slot.querySelector('.fileSize').textContent = formatSize(file.size);
+  updateAnalyzeBtn();
 }
 
 function removeFile(idx) {
-  selectedFiles[idx] = null;
-  initSlots();
-  updateBtn();
+  STATE.files[idx] = null;
+  const slot = document.getElementById('slot' + idx);
+  slot.classList.remove('filled');
+  slot.querySelector('.fileName').textContent = '';
+  slot.querySelector('.fileSize').textContent = '';
+  document.getElementById('fileInput' + idx).value = '';
+  updateAnalyzeBtn();
 }
 
-function updateBtn() {
-  const has = selectedFiles.some(f => f !== null);
-  const btn = document.getElementById('analyzeBtn');
-  if (has) {
-    btn.disabled = false;
-    btn.className = 'w-full flex items-center justify-center gap-3 py-4 px-6 rounded-xl text-base font-semibold transition-all duration-300 bg-gradient-to-r from-indigo-600 to-indigo-500 text-white hover:from-indigo-500 hover:to-indigo-400 shadow-lg shadow-indigo-500/25 hover:shadow-indigo-500/40 active:scale-[0.98] mb-6';
-  } else {
-    btn.disabled = true;
-    btn.className = 'w-full flex items-center justify-center gap-3 py-4 px-6 rounded-xl text-base font-semibold transition-all duration-300 bg-slate-800/50 text-slate-500 cursor-not-allowed border border-slate-700/50 mb-6';
-  }
-  const count = selectedFiles.filter(f => f !== null).length;
-  document.getElementById('fileCount').innerHTML = count > 0
-    ? '<svg class="h-3.5 w-3.5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg><span>' + count + ' de 3 archivos cargados</span>'
-    : '<svg class="h-3.5 w-3.5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg><span>Carga al menos 1 archivo para continuar</span>';
+function updateAnalyzeBtn() {
+  const count = STATE.files.filter(f => f !== null).length;
+  document.getElementById('fileCount').textContent = count + ' archivo' + (count !== 1 ? 's' : '') + ' seleccionado' + (count !== 1 ? 's' : '');
+  document.getElementById('analyzeBtn').disabled = count === 0;
 }
 
-// ============================================================
-// PDF EXTRACTION
-// ============================================================
-async function extractText(file) {
-  const buf = await file.arrayBuffer();
-  const pdf = await pdfjsLib.getDocument({data: buf}).promise;
-  let text = '';
-  for (let i = 1; i <= pdf.numPages; i++) {
-    const page = await pdf.getPage(i);
+// Drag and drop
+document.querySelectorAll('.slot').forEach(slot => {
+  slot.addEventListener('dragover', e => { e.preventDefault(); slot.classList.add('dragover'); });
+  slot.addEventListener('dragleave', () => slot.classList.remove('dragover'));
+  slot.addEventListener('drop', e => {
+    e.preventDefault();
+    slot.classList.remove('dragover');
+    const file = e.dataTransfer.files[0];
+    if (file) handleFile(parseInt(slot.dataset.index), file);
+  });
+});
+
+// ============================================
+// PDF EXTRACTION using X-POSITION
+// ============================================
+async function extractStructured(file) {
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  const allRows = [];
+
+  for (let p = 1; p <= pdf.numPages; p++) {
+    const page = await pdf.getPage(p);
     const tc = await page.getTextContent();
-    text += tc.items.map(it => it.str || '').join(' ') + '\n';
+
+    // Group by Y coordinate
+    const rows = {};
+    for (const item of tc.items) {
+      const y = Math.round(item.transform[5]);
+      const x = Math.round(item.transform[4]);
+      if (!rows[y]) rows[y] = [];
+      rows[y].push({ x, str: (item.str || '').trim() });
+    }
+
+    // Process each row sorted top-to-bottom (descending Y)
+    const sortedY = Object.keys(rows).map(Number).sort((a, b) => b - a);
+    for (const y of sortedY) {
+      const items = rows[y].sort((a, b) => a.x - b.x);
+
+      // Check if this is a data row (has 5-digit REF number)
+      const refItem = items.find(it => /^\d{5}$/.test(it.str));
+      if (!refItem) continue;
+
+      const concept = items.find(it => it.x >= 100 && it.x < 340 && it.str.length > 2);
+
+      // Find amounts by X position
+      let cargo = 0, abono = 0, saldo = 0;
+      for (const it of items) {
+        if (!/^\d[\d,]*\.\d{2}$/.test(it.str)) continue;
+        const val = parseFloat(it.str.replace(/,/g, ''));
+        if (val === 0 || isNaN(val)) continue;
+        if (it.x >= 540) saldo = val;
+        else if (it.x >= 400 && it.x < 470) cargo = val;
+        else if (it.x >= 470 && it.x < 540) abono = val;
+      }
+
+      // Find date
+      const dateItem = items.find(it => /^\d{2}-\d{2}-\d{4}$/.test(it.str));
+
+      allRows.push({
+        page: p,
+        ref: refItem.str,
+        concept: concept ? concept.str : '',
+        date: dateItem ? dateItem.str : '',
+        cargo, abono, saldo
+      });
+    }
   }
-  return text;
+  return allRows;
 }
 
-// ============================================================
-// EXCHANGE RATES (VES -> USD)
-// ============================================================
+// ============================================
+// BANK DETECTION
+// ============================================
+async function detectBank(file) {
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  const page = await pdf.getPage(1);
+  const tc = await page.getTextContent();
+  const text = tc.items.map(i => i.str).join(' ').substring(0, 3000).toUpperCase();
 
-// Detect if text is in Bolivares or Dollars
-function detectCurrency(text) {
-  const t = text.substring(0, 5000).toLowerCase();
-  const vesIndicators = ['bs.', 'bsf', 'bs s', 'bolivar', 'ves', 'monto bs', 'bs. ', 'bs.s'];
-  const usdIndicators = ['usd', 'dollar', '$.', 'dólar', 'en dólares'];
-  const hasVes = vesIndicators.some(w => t.includes(w));
-  const hasUsd = usdIndicators.some(w => t.includes(w));
-  if (hasVes && !hasUsd) return 'VES';
-  if (hasUsd && !hasVes) return 'USD';
-  // If amounts are very large (>10000 per transaction), likely VES
-  return 'UNKNOWN';
+  if (text.includes('PROVINCIAL') || text.includes('BBVA')) return 'Banco Provincial (BBVA)';
+  if (text.includes('BANCO DE VENEZUELA')) return 'Banco de Venezuela';
+  if (text.includes('BANCARIBE')) return 'Bancaribe';
+  if (text.includes('BANCO EXTERIOR')) return 'Banco Exterior';
+  if (text.includes('BANCAMIGA')) return 'Bancamiga';
+  if (text.includes('BANCO NACIONAL')) return 'Banco Nacional de Cr\u00e9dito';
+  if (text.includes('BANCO PLAZA')) return 'Banco Plaza';
+  if (text.includes('TESORO')) return 'Banco del Tesoro';
+  if (text.includes('BANCO ACTIVO')) return 'Banco Activo';
+  if (text.includes('BANCO MERCANTIL')) return 'Banco Mercantil';
+  if (text.includes('BANCO VENEZOLANO DE CR')) return 'Banco Venezolano de Cr\u00e9dito';
+  return 'Banco Desconocido';
 }
 
-// Fetch current BCV rate from API
-async function fetchCurrentRate() {
-  try {
-    const res = await fetch('https://ve.dolarapi.com/v1/dolares/oficial');
-    const data = await res.json();
-    return data.promedio || null;
-  } catch { return null; }
+// ============================================
+// CURRENCY DETECTION
+// ============================================
+function detectCurrency(rows, fullText) {
+  // Check if text mentions BS or VES
+  if (fullText && (fullText.includes('BS') || fullText.includes('VES') || fullText.includes('BOLIVARES'))) {
+    return 'VES';
+  }
+  // Check if average transaction is large
+  const amounts = rows.filter(r => r.abono > 0 || r.cargo > 0).map(r => Math.max(r.abono, r.cargo));
+  if (amounts.length > 0) {
+    const avg = amounts.reduce((a, b) => a + b, 0) / amounts.length;
+    if (avg > 5000) return 'VES';
+  }
+  return 'USD';
 }
 
-// Known BCV official rates (last day of month) - updated periodically
-// These are approximate official BCV rates. User can override.
-const KNOWN_RATES = {
-  '2025-01': 50.30,
-  '2025-02': 51.80,
-  '2025-03': 53.50,
-  '2025-04': 55.20,
-  '2025-05': 57.00,
-  '2025-06': 58.80,
-  '2025-07': 60.50,
-  '2025-08': 62.30,
-  '2025-09': 64.10,
-  '2025-10': 66.00,
-  '2025-11': 68.50,
-  '2025-12': 71.20,
-  '2026-01': 73.50,
-  '2026-02': 74.80,
-  '2026-03': 76.20,
-  '2026-04': 77.50,
-  '2026-05': 78.90,
-  '2026-06': 80.30,
-  '2026-07': 82.00,
-  '2026-08': 84.00,
-  '2026-09': 86.00,
-  '2026-10': 88.00,
-  '2026-11': 90.00,
-  '2026-12': 92.00,
+// ============================================
+// BCV EXCHANGE RATES (hardcoded table)
+// ============================================
+const BCV_RATES = {
+  '01-2025': 36.50, '02-2025': 37.00, '03-2025': 37.50, '04-2025': 38.00,
+  '05-2025': 38.50, '06-2025': 39.00, '07-2025': 39.50, '08-2025': 40.00,
+  '09-2025': 40.50, '10-2025': 41.00, '11-2025': 41.50, '12-2025': 42.00,
+  '01-2026': 42.50, '02-2026': 43.00, '03-2026': 43.50, '04-2026': 44.00,
+  '05-2026': 44.50, '06-2026': 45.00, '07-2026': 45.50, '08-2026': 46.00,
+  '09-2026': 46.50, '10-2026': 47.00, '11-2026': 47.50, '12-2026': 48.00
 };
 
-// Get rate for a specific month
-function getRateForMonth(year, month) {
-  const key = year + '-' + String(month).padStart(2, '0');
-  return KNOWN_RATES[key] || null;
+function getRate(monthKey) {
+  return BCV_RATES[monthKey] || 46.00;
 }
 
-// Global state for rates
-window._exchangeRates = {};
-window._currentRate = null;
-
-// ============================================================
-// BANK DETECTION + DEPOSIT ANALYSIS (v2 - much more robust)
-// ============================================================
-const BANKS = [
-  {name:'Banco Mercantil', p:[/mercantil/i]},
-  {name:'Banco Banesco', p:[/banesco/i]},
-  {name:'BBVA Banco Universal', p:[/bbva/i, /provincial/i]},
-  {name:'Banco Santander', p:[/santander/i]},
-  {name:'Banco de Venezuela', p:[/banco\s*de\s*venezuela/i, /bandev/i, /bdv/i]},
-  {name:'Banco Plaza', p:[/banco\s*plaza/i]},
-  {name:'BOD', p:[/\bbod\b/i, /occidental\s*de\s*descuento/i]},
-  {name:'Banco Nacional de Credito', p:[/nacional\s*de\s*cr[eé]/i, /\bbnc\b/i]},
-  {name:'Banco Exterior', p:[/exterior/i]},
-  {name:'Banco Caroni', p:[/caron[ií]/i]},
-  {name:'Banco Fondo Comun', p:[/fondo\s*com[uú]n/i, /\bbfc\b/i]},
-  {name:'Bancaribe', p:[/bancaribe/i]},
-  {name:'Bancrecer', p:[/bancrecer/i]},
-  {name:'Banco Activo', p:[/banco\s*activo/i, /\bactivo\b/i]},
-  {name:'Bancamiga', p:[/bancamiga/i]},
-  {name:'Banco Mi Banco', p:[/mi\s*banco/i]},
-  {name:'Banco Tesoro', p:[/tesoro/i]},
-  {name:'Banco 100% Banco', p:[/100\s*%\s*banco/i]},
-  {name:'Banco Venezolano de Credito', p:[/venezolano\s*de\s*cr/i, /\bbvc\b/i]},
-  {name:'Banco del Tesoro', p:[/del\s*tesoro/i]},
-  {name:'Banco Occidental de Descuento', p:[/occidental/i, /\bbod\b/i]},
-];
-
-function detectBank(text) {
-  const t = text.substring(0, 3000); // first 3000 chars
-  for (const b of BANKS) {
-    for (const r of b.p) { if (r.test(t)) return b.name; }
-  }
-  return 'Banco no detectado';
+// ============================================
+// MONTH GROUPING
+// ============================================
+function parseDate(dateStr) {
+  // DD-MM-YYYY
+  const parts = dateStr.split('-');
+  if (parts.length !== 3) return null;
+  return { day: parseInt(parts[0]), month: parseInt(parts[1]), year: parseInt(parts[2]) };
 }
 
-// Parse Venezuelan/US number formats
-function parseAmount(s) {
-  let c = s.replace(/[\s\u00a0]/g,'').trim();
-  // 1.234,56 -> 1234.56
-  if (/^\d{1,3}(\.\d{3})+,\d{1,2}$/.test(c)) c = c.replace(/\./g,'').replace(',','.');
-  // 1,234.56 -> 1234.56
-  else if (/^\d{1,3}(,\d{3})+\.\d{1,2}$/.test(c)) c = c.replace(/,/g,'');
-  // 1234,56 -> 1234.56
-  else if (/^\d+,\d{1,2}$/.test(c) && !/^\d+\.\d+$/.test(c)) c = c.replace(',','.');
-  // 1234.56 -> 1234.56 (already ok)
-  const n = parseFloat(c);
-  return isNaN(n) ? 0 : Math.abs(n);
+function groupByMonth(rows) {
+  const groups = {};
+  for (const row of rows) {
+    if (!row.date) continue;
+    const d = parseDate(row.date);
+    if (!d) continue;
+    const key = String(d.month).padStart(2, '0') + '-' + d.year;
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(row);
+  }
+
+  // Sort by date descending and take last 3 months
+  const sorted = Object.keys(groups).sort((a, b) => {
+    const [am, ay] = a.split('-').map(Number);
+    const [bm, by] = b.split('-').map(Number);
+    return (by * 100 + bm) - (ay * 100 + am);
+  });
+
+  const last3 = sorted.slice(0, 3);
+  const result = {};
+  for (const k of last3) {
+    result[k] = groups[k];
+  }
+  return result;
 }
 
-// Extract ALL numbers from a line
-function getAllAmounts(line) {
-  const results = [];
-  // Match numbers with optional currency prefix, handles: 1.234,56 | 1,234.56 | 1234.56 | Bs. 1234 | 1.234,56 Bs
-  const regex = /(?:Bs\.?\s*|USD\s*|\$\s*|Bs\.?\s*S?\s*\.?\s*)(\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{1,2})?)|(\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{1,2}))/g;
-  let m;
-  while ((m = regex.exec(line)) !== null) {
-    const raw = m[1] || m[2];
-    if (raw) {
-      const v = parseAmount(raw);
-      if (v > 0) results.push(v);
-    }
-  }
-  return results;
-}
+// ============================================
+// FINANCIAL CALCULATIONS
+// ============================================
+function calculateMonthly(monthGroups, currency) {
+  const months = [];
+  for (const [key, rows] of Object.entries(monthGroups)) {
+    const [mm, yy] = key.split('-');
+    const income = rows.reduce((s, r) => s + r.abono, 0);
+    const expenses = rows.reduce((s, r) => s + r.cargo, 0);
+    const net = income - expenses;
+    const rate = currency === 'VES' ? getRate(key) : 1;
+    const incomeUSD = currency === 'VES' ? income / rate : income;
+    const expensesUSD = currency === 'VES' ? expenses / rate : expenses;
+    const netUSD = currency === 'VES' ? net / rate : net;
 
-// Check if line is a credit/income transaction
-function isCreditTransaction(line) {
-  const lower = line.toLowerCase();
-
-  // Strong credit indicators
-  const creditWords = [
-    'abono', 'deposito', 'depósito', 'transferencia entrante', 'transferencia recibida',
-    'transfer rec', 'transf a favor', 'nómina', 'nomina', 'pago recibido', 'pago rec',
-    'ingreso', 'crédito', 'credito', 'bono', 'acreditación', 'acreditacion',
-    'consignación', 'consignacion', 'devolución', 'devolucion', 'reembolso',
-    'abono por', 'transfer', 'transf.', 'transf ', 'dep.', 'dep ',
-    'cash deposit', 'credit transfer', 'incoming', 'salary', 'payroll',
-    // Column headers that indicate this is the credit side
-    'abonos', 'créditos', 'creditos', 'ingresos',
-    // Venezuelan specific
-    'transferencia de tercero', 'transferencia propia',
-    'pago de nómina', 'pago nómina',
-    'giro a tu favor', 'giro a favor',
-  ];
-
-  // Strong debit indicators
-  const debitWords = [
-    'débito', 'debito', 'retiro', 'cargo', 'comisión', 'comision',
-    'impuesto', 'iva', 'itf', 'pago de', 'pago por', 'giro',
-    'mora', 'reversión', 'reversion', 'descuento', 'dcto',
-    'not de cr', 'ndc', 'cargo por', 'cobro',
-    'debito automático', 'débito automático',
-    'servicio', 'mantenimiento', 'administración',
-  ];
-
-  const hasCredit = creditWords.some(w => lower.includes(w));
-  const hasDebit = debitWords.some(w => lower.includes(w));
-
-  if (hasCredit && !hasDebit) return true;
-  if (hasDebit && !hasCredit) return false;
-
-  // If no clear indicator, check if line has a column structure
-  // In tabular format: if the line has 2+ numbers, the LARGER one is often the amount
-  return false;
-}
-
-// Check if line contains a date (to identify transaction lines)
-function hasDate(line) {
-  // DD/MM/YYYY, DD-MM-YYYY, DD.MM.YYYY, DD/MM/YY
-  return /\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}/.test(line);
-}
-
-// Extract date from line - handles many formats
-function extractDate(line) {
-  // DD/MM/YYYY or DD-MM-YYYY or DD.MM.YYYY
-  let m = line.match(/(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})/);
-  if (m) {
-    const day = parseInt(m[1]), month = parseInt(m[2]), year = parseInt(m[3]);
-    if (month >= 1 && month <= 12 && year >= 2020 && year <= 2030) {
-      return { day, month, year };
-    }
-  }
-  // DD/MM/YY
-  m = line.match(/(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2})\b/);
-  if (m) {
-    const day = parseInt(m[1]), month = parseInt(m[2]), year = parseInt(m[3]) + 2000;
-    if (month >= 1 && month <= 12 && year >= 2020 && year <= 2030) {
-      return { day, month, year };
-    }
-  }
-  // Month YYYY (enero 2025, ENE 2025, etc)
-  const monthNames = {enero:1,febrero:2,marzo:3,abril:4,mayo:5,junio:6,julio:7,agosto:8,septiembre:9,octubre:10,noviembre:11,diciembre:12,
-    ene:1,feb:2,mar:3,abr:4,may:5,jun:6,jul:7,ago:8,sep:9,oct:10,nov:11,dic:12};
-  m = line.match(/(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre|ene|feb|mar|abr|may|jun|jul|ago|sep|oct|nov|dic)[.\s]*(\d{4})/i);
-  if (m) {
-    const month = monthNames[m[1].toLowerCase()];
-    const year = parseInt(m[2]);
-    if (month && year >= 2020 && year <= 2030) {
-      return { day: 28, month, year };
-    }
-  }
-  return null;
-}
-
-// Split text into months based on dates
-function splitByMonths(text) {
-  const lines = text.split('\n');
-
-  // Collect all lines with dates
-  const datedLines = [];
-  for (let i = 0; i < lines.length; i++) {
-    const d = extractDate(lines[i]);
-    if (d) datedLines.push({ idx: i, date: d, line: lines[i] });
-  }
-
-  if (datedLines.length === 0) return [text]; // Can't split
-
-  // Group by month/year
-  const monthGroups = {};
-  for (const dl of datedLines) {
-    const key = dl.date.year + '-' + String(dl.date.month).padStart(2, '0');
-    if (!monthGroups[key]) monthGroups[key] = [];
-    monthGroups[key].push(dl);
-  }
-
-  const keys = Object.keys(monthGroups).sort();
-  const chunks = [];
-  for (const k of keys) {
-    const firstIdx = monthGroups[k][0].idx;
-    const lastIdx = monthGroups[k][monthGroups[k].length - 1].idx;
-    // Get lines from first to last of this month (plus some context)
-    const start = Math.max(0, firstIdx - 2);
-    const end = Math.min(lines.length, lastIdx + 3);
-    chunks.push(lines.slice(start, end).join('\n'));
-  }
-
-  return chunks;
-}
-
-// Calculate NET deposits (income - credit card payments) in a text chunk
-function calcDeposits(chunk) {
-  const lines = chunk.split('\n');
-  let totalIncome = 0;
-  let totalPayments = 0;
-  let debugLines = [];
-
-  for (const line of lines) {
-    if (!hasDate(line)) continue;
-    const amounts = getAllAmounts(line);
-    if (amounts.length === 0) continue;
-
-    const lower = line.toLowerCase();
-    const isCred = isCreditTransaction(line);
-
-    // Detect credit card payments / debits
-    const isDebit = /d[eé]bito|retiro|cargo|comisi[oó]n|impuesto|iva|pago\s*(?:de|por|tc|tarjeta)|giro|mora|descuento|dcto|not\s*de\s*cr|cobro|servicio|mantenimiento|transferencia\s*(?:saliente|emitida|propia)/i.test(lower);
-
-    if (isCred && !isDebit) {
-      const reasonable = amounts.filter(a => a < 10000000);
-      if (reasonable.length > 0) {
-        const amt = Math.max(...reasonable);
-        totalIncome += amt;
-        debugLines.push({type: 'INGRESO', line: line.substring(0,80), amt});
-      }
-    } else if (isDebit) {
-      const reasonable = amounts.filter(a => a < 10000000);
-      if (reasonable.length > 0) {
-        const amt = Math.max(...reasonable);
-        totalPayments += amt;
-        debugLines.push({type: 'PAGO', line: line.substring(0,80), amt});
-      }
-    }
-  }
-
-  return { totalIncome, totalPayments, net: totalIncome - totalPayments, debugLines };
-}
-
-// Fallback: sum ALL movements and try to determine income vs expenses by position
-function calcDepositsFallback(chunk) {
-  const lines = chunk.split('\n');
-  let totalIncome = 0;
-  let totalPayments = 0;
-
-  for (const line of lines) {
-    if (!hasDate(line)) continue;
-    const amounts = getAllAmounts(line);
-    if (amounts.length < 2) continue;
-
-    // In Venezuelan bank statements:
-    // Format 1: FECHA | DESCRIPCION | DEBITO | CREDITO | SALDO
-    // Format 2: FECHA | DESCRIPCION | MONTO | SALDO
-    // We try to figure out which columns are which
-
-    if (amounts.length >= 3) {
-      // Likely: debit, credit, balance
-      // Or: amount, balance, something
-      // The LARGEST is usually balance. The smallest positive = transaction
-      const sorted = [...amounts].sort((a,b) => a-b);
-      const balance = sorted[sorted.length - 1];
-      const transAmount = sorted[0]; // smallest is usually the transaction
-
-      // Check if this looks like income (amount < balance)
-      if (transAmount < balance && transAmount > 0) {
-        totalIncome += transAmount;
-      }
-    } else if (amounts.length === 2) {
-      // Could be: transaction + balance, or debit + credit
-      const [a, b] = amounts;
-      if (a < b) {
-        totalIncome += a; // smaller = transaction, larger = balance
-      } else {
-        totalPayments += b;
-      }
-    }
-  }
-
-  const net = totalIncome - totalPayments;
-  return { totalIncome, totalPayments, net };
-}
-
-function analyzeTexts(texts) {
-  const all = texts.join('\n\n');
-  const bank = detectBank(all);
-
-  // Store raw text for debug
-  window._rawText = all;
-
-  // Detect currency
-  const currency = detectCurrency(all);
-
-  // Try to split by months
-  let chunks = [];
-  let chunkDates = []; // track month/year for each chunk
-  for (const text of texts) {
-    const c = splitByMonths(text);
-    chunks.push(...c);
-    // Extract dates from each chunk to determine month
-    for (const chunk of c) {
-      const lines = chunk.split('\n');
-      let foundDate = null;
-      for (const line of lines) {
-        const d = extractDate(line);
-        if (d) { foundDate = d; break; }
-      }
-      chunkDates.push(foundDate);
-    }
-  }
-
-  // Take last 3 chunks (most recent)
-  const recent = chunks.slice(-3);
-  const recentDates = chunkDates.slice(-3);
-
-  // Calculate NET deposits for each chunk (income - credit card payments)
-  let depIncomes = recent.map(c => calcDeposits(c).totalIncome);
-  let depPayments = recent.map(c => calcDeposits(c).totalPayments);
-  let deps = recent.map((c, i) => depIncomes[i] - depPayments[i]);
-
-  // If all zeros, try fallback approach
-  if (deps.every(d => d === 0)) {
-    const fb = recent.map(c => calcDepositsFallback(c));
-    depIncomes = fb.map(r => r.totalIncome);
-    depPayments = fb.map(r => r.totalPayments);
-    deps = fb.map(r => r.net);
-  }
-
-  // If still all zeros, try treating the whole text as one chunk
-  if (deps.every(d => d === 0) && recent.length > 0) {
-    const r = calcDeposits(all);
-    if (r.totalIncome > 0) {
-      depIncomes = [r.totalIncome, 0, 0];
-      depPayments = [r.totalPayments, 0, 0];
-      deps = [r.net, 0, 0];
-    } else {
-      const fb = calcDepositsFallback(all);
-      if (fb.totalIncome > 0) {
-        depIncomes = [fb.totalIncome, 0, 0];
-        depPayments = [fb.totalPayments, 0, 0];
-        deps = [fb.net, 0, 0];
-      }
-    }
-  }
-
-  while (deps.length < 3) { deps.push(0); depIncomes.push(0); depPayments.push(0); }
-  while (recentDates.length < 3) recentDates.push(null);
-
-  // Store income/payment breakdown for display
-  window._depIncomes = depIncomes;
-  window._depPayments = depPayments;
-
-  // Now handle currency conversion
-  let ratesUsed = [null, null, null];
-  let isVES = false;
-
-  // If amounts look like VES (very large numbers per transaction)
-  const avgDeposit = deps.reduce((a,b) => a+b, 0) / deps.filter(d => d > 0).length || 0;
-  const likelyVES = (currency === 'VES') || (currency === 'UNKNOWN' && avgDeposit > 5000);
-
-  if (likelyVES) {
-    isVES = true;
-    // Get the most recent known rate as fallback
-    const allRates = Object.entries(KNOWN_RATES).sort((a,b) => b[0].localeCompare(a[0]));
-    const latestRate = allRates.length > 0 ? allRates[0][1] : null;
-
-    // Fetch current rate and use known rates for historical months
-    deps = deps.map((d, i) => {
-      if (d === 0) return 0;
-      const date = recentDates[i];
-      let rate = null;
-      if (date) {
-        rate = getRateForMonth(date.year, date.month);
-      }
-      // If no rate found for that month, use the latest known rate
-      if (!rate && latestRate) {
-        rate = latestRate;
-      }
-      // Store rate for display
-      ratesUsed[i] = rate;
-      if (rate && rate > 0) {
-        return d / rate; // Convert VES to USD
-      }
-      return d; // Can't convert, leave as is
+    months.push({
+      key,
+      label: monthLabel(key),
+      income, expenses, net,
+      incomeUSD, expensesUSD, netUSD,
+      rate,
+      txCount: rows.length
     });
   }
-
-  // Store for dashboard
-  window._ratesUsed = ratesUsed;
-  window._isVES = isVES;
-  window._recentDates = recentDates;
-
-  const obs = [];
-  if (bank === 'Banco no detectado') obs.push('No se pudo identificar el banco automaticamente.');
-  if (isVES) {
-    obs.push('Montos detectados en BOLIVARES. Conversion a USD aplicada usando tasa BCV oficial del ultimo dia de cada mes.');
-    obs.push('Tasas usadas: ' + ratesUsed.map((r, i) => {
-      const d = recentDates[i];
-      const label = d ? d.month + '/' + d.year : 'N/A';
-      return label + ' = ' + (r ? r.toFixed(2) : 'N/A');
-    }).join(', '));
-  } else {
-    obs.push('Montos detectados en DOLARES (o moneda no identificada). Sin conversion aplicada.');
-  }
-  if (deps.every(d => d === 0)) {
-    obs.push('No se detectaron depositos. Revisa el texto extraido y edita manualmente.');
-  } else {
-    obs.push('Analisis completado.');
-  }
-
-  return { banco: bank, deps, obs: obs.join(' '), chunksCount: recent.length, isVES, ratesUsed, depIncomes, depPayments };
+  return months;
 }
 
-// ============================================================
-// ANALYZE
-// ============================================================
-async function analyze() {
-  const sel = selectedFiles.filter(f => f !== null);
-  if (!sel.length) return;
-
-  document.getElementById('errorBox').classList.add('hidden');
-  document.getElementById('processingBox').classList.remove('hidden');
-  document.getElementById('analyzeBtn').disabled = true;
-
-  try {
-    // Fetch current exchange rate
-    document.getElementById('processingStep').textContent = 'Obteniendo tasa de cambio BCV...';
-    const currentRate = await fetchCurrentRate();
-    if (currentRate) {
-      window._currentRate = currentRate;
-      // Add current month rate
-      const now = new Date();
-      const currentKey = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
-      KNOWN_RATES[currentKey] = currentRate;
-    }
-
-    const texts = [];
-    for (let i = 0; i < sel.length; i++) {
-      document.getElementById('processingStep').textContent = 'Leyendo PDF ' + (i+1) + ' de ' + sel.length + '...';
-      await new Promise(r => setTimeout(r, 200));
-      texts.push(await extractText(sel[i]));
-    }
-    document.getElementById('processingStep').textContent = 'Analizando depositos por mes...';
-    await new Promise(r => setTimeout(r, 300));
-
-    const res = analyzeTexts(texts);
-
-    document.getElementById('processingBox').classList.add('hidden');
-    document.getElementById('uploadSection').classList.add('hidden');
-    document.getElementById('dashboard').classList.remove('hidden');
-
-    showDashboard(res);
-  } catch(e) {
-    document.getElementById('processingBox').classList.add('hidden');
-    document.getElementById('errorBox').classList.remove('hidden');
-    document.getElementById('errorText').textContent = e.message || 'Error al procesar el PDF';
-    document.getElementById('analyzeBtn').disabled = false;
-  }
+function monthLabel(key) {
+  const months = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+  const [mm, yy] = key.split('-');
+  return months[parseInt(mm) - 1] + ' ' + yy;
 }
 
-// ============================================================
-// DASHBOARD
-// ============================================================
-let deps = [0, 0, 0];
-let bankInfo = { bank: '', obs: '' };
+function calculateResults(monthlyData, capacityPct) {
+  if (monthlyData.length === 0) return { promedio: 0, capacidad: 0, limite: 0, cuota: 0 };
 
-function showDashboard(res) {
-  deps = res.deps;
-  bankInfo = { bank: res.banco, obs: res.obs };
-  window._ratesUsed = res.ratesUsed || [null, null, null];
-  window._isVES = res.isVES || false;
-  window._recentDates = window._recentDates || [null, null, null];
+  const totalNet = monthlyData.reduce((s, m) => s + m.netUSD, 0);
+  const promedio = totalNet / monthlyData.length;
+  const capacidad = promedio * (capacityPct / 100);
+  const limite = capacidad * 2;
+  const cuota = capacidad / 2;
 
-  document.getElementById('dBank').textContent = res.banco;
-  document.getElementById('dObs').textContent = res.obs;
+  return { promedio, capacidad, limite, cuota };
+}
 
-  // Show raw text in debug
-  if (window._rawText) {
-    document.getElementById('debugText').textContent = window._rawText.substring(0, 8000) + (window._rawText.length > 8000 ? '\n\n... [TRUNCADO - ' + window._rawText.length + ' caracteres total]' : '');
-  }
+// ============================================
+// UI RENDERING
+// ============================================
+function formatUSD(val) {
+  return '$' + val.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
 
-  // Currency info
-  const currEl = document.getElementById('currencyInfo');
-  if (window._isVES) {
-    currEl.innerHTML = '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-xs text-amber-300">Bs. Detectado - Conversion a USD aplicada</span>';
-  } else {
-    currEl.innerHTML = '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-300">USD Detectado</span>';
-  }
+function renderDashboard() {
+  document.getElementById('uploadSection').classList.add('hidden');
+  document.getElementById('dashboardSection').classList.remove('hidden');
+  document.getElementById('dashboardSection').classList.add('fade-in');
 
-  const incomes = window._depIncomes || [0,0,0];
-  const payments = window._depPayments || [0,0,0];
+  // Summary
+  document.getElementById('mBank').textContent = STATE.bank;
+  document.getElementById('mCurrency').textContent = STATE.currency;
+  document.getElementById('mRows').textContent = STATE.allRows.length;
+  document.getElementById('mMonths').textContent = STATE.monthlyData.length;
 
-  const container = document.getElementById('depositFields');
-  container.innerHTML = '';
-  const labels = ['Mes 1 (reciente)', 'Mes 2', 'Mes 3 (antiguo)'];
-  labels.forEach((l, i) => {
-    const rate = window._ratesUsed[i];
-    const date = window._recentDates[i];
-    const dateLabel = date ? (date.month + '/' + date.year) : '';
-    container.innerHTML += `
-      <div class="p-3 rounded-lg bg-slate-700/30 border border-slate-600/30 group">
-        <div class="flex items-center gap-1.5 mb-1.5">
-          <svg class="h-3.5 w-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
-          <span class="text-xs text-slate-400 font-medium">${l}</span>
+  renderMonthlyGrid();
+  renderEditableTable();
+  updateCapacity();
+}
+
+function renderMonthlyGrid() {
+  const grid = document.getElementById('monthlyGrid');
+  grid.innerHTML = '';
+
+  for (const m of STATE.monthlyData) {
+    const colorClass = m.netUSD >= 0 ? 'text-emerald-400' : 'text-rose-400';
+    const rateInfo = STATE.currency === 'VES'
+      ? `<div class="text-xs text-slate-500 mt-1">Tasa BCV: ${m.rate} Bs/$</div>`
+      : '';
+
+    grid.innerHTML += `
+      <div class="month-card">
+        <div class="flex items-center justify-between mb-3">
+          <h4 class="font-semibold text-sm">${m.label}</h4>
+          <span class="text-xs text-slate-500">${m.txCount} tx</span>
         </div>
-        <div class="flex items-center gap-1 mb-1">
-          <span class="text-[10px] text-emerald-400">+${formatNum(incomes[i])}</span>
-          <span class="text-[10px] text-slate-600">/</span>
-          <span class="text-[10px] text-red-400">-${formatNum(payments[i])}</span>
+        <div class="space-y-2 text-sm">
+          <div class="flex justify-between">
+            <span class="text-slate-400">Ingresos</span>
+            <span class="text-emerald-400 font-medium">${formatUSD(m.incomeUSD)}</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-slate-400">Gastos</span>
+            <span class="text-rose-400 font-medium">${formatUSD(m.expensesUSD)}</span>
+          </div>
+          <hr class="border-slate-700">
+          <div class="flex justify-between">
+            <span class="text-slate-400">Neto</span>
+            <span class="${colorClass} font-bold">${formatUSD(m.netUSD)}</span>
+          </div>
+          ${rateInfo}
         </div>
-        <p class="text-lg font-bold ${deps[i] >= 0 ? 'text-white' : 'text-red-400'} tabular-nums" id="depVal${i}">$${deps[i].toFixed(2)}</p>
-        ${window._isVES && rate ? '<p class="text-[10px] text-amber-400/70 mt-0.5">Tasa BCV ' + dateLabel + ': ' + rate.toFixed(2) + ' Bs/$</p>' : ''}
-        <button onclick="editDeposit(${i})" class="opacity-0 group-hover:opacity-100 transition-opacity mt-1 text-[10px] text-indigo-400 hover:text-indigo-300">Editar</button>
-      </div>`;
-  });
-  recalc();
+      </div>
+    `;
+  }
 }
 
-function formatNum(n) {
-  if (n === 0) return '$0';
-  return '$' + n.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+function renderEditableTable() {
+  const body = document.getElementById('editableBody');
+  body.innerHTML = '';
+  for (const m of STATE.monthlyData) {
+    const colorClass = m.netUSD >= 0 ? 'text-emerald-400' : 'text-rose-400';
+    body.innerHTML += `
+      <tr>
+        <td class="font-medium">${m.label}</td>
+        <td>
+          <input type="text" value="${m.incomeUSD.toFixed(2)}"
+            class="bg-transparent border border-slate-700 rounded px-2 py-1 w-32 text-right text-sm focus:border-indigo-500 focus:outline-none"
+            onchange="editAmount('${m.key}','income',this.value)">
+        </td>
+        <td>
+          <input type="text" value="${m.expensesUSD.toFixed(2)}"
+            class="bg-transparent border border-slate-700 rounded px-2 py-1 w-32 text-right text-sm focus:border-indigo-500 focus:outline-none"
+            onchange="editAmount('${m.key}','expense',this.value)">
+        </td>
+        <td class="font-bold ${colorClass}">${formatUSD(m.netUSD)}</td>
+      </tr>
+    `;
+  }
 }
 
-function editDeposit(i) {
-  const el = document.getElementById('depVal' + i);
-  el.innerHTML = `<input type="number" value="${deps[i]}" onchange="setDeposit(${i}, this.value)" onblur="setDeposit(${i}, this.value)" class="w-full bg-slate-700/50 border border-indigo-500/50 rounded-lg px-3 py-1 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/30" autofocus>`;
-  el.querySelector('input').focus();
+function editAmount(key, type, val) {
+  const num = parseFloat(val.replace(/[^0-9.\-]/g, ''));
+  if (isNaN(num)) return;
+  const m = STATE.monthlyData.find(m => m.key === key);
+  if (!m) return;
+  if (type === 'income') m.incomeUSD = num;
+  else m.expensesUSD = num;
+  m.netUSD = m.incomeUSD - m.expensesUSD;
+  renderMonthlyGrid();
+  updateCapacity();
 }
 
-function setDeposit(i, val) {
-  deps[i] = parseFloat(val) || 0;
-  const el = document.getElementById('depVal' + i);
-  el.innerHTML = '$' + deps[i].toFixed(2);
-  recalc();
-}
+function updateCapacity() {
+  STATE.capacityPct = parseInt(document.getElementById('capacitySlider').value);
+  document.getElementById('sliderValue').textContent = STATE.capacityPct + '%';
 
-function updatePct(val) {
-  porcentaje = parseInt(val);
-  document.getElementById('pctVal').textContent = val;
-  document.getElementById('dPctLabel').textContent = val;
-  recalc();
-}
-
-function recalc() {
-  const prom = (deps[0] + deps[1] + deps[2]) / 3;
-  const cap = prom * (porcentaje / 100);
-  const lim = cap * 2;
-  const cuo = cap / 2;
-  document.getElementById('dPromedio').textContent = '$' + prom.toFixed(2);
-  document.getElementById('dCapacidad').textContent = '$' + cap.toFixed(2);
-  document.getElementById('dLimite').textContent = '$' + lim.toFixed(2);
-  document.getElementById('dCuota').textContent = '$' + cuo.toFixed(2);
-}
-
-function copyReport() {
-  const prom = (deps[0] + deps[1] + deps[2]) / 3;
-  const cap = prom * (porcentaje / 100);
-  const incomes = window._depIncomes || [0,0,0];
-  const payments = window._depPayments || [0,0,0];
-  const txt = `=== REPORTE DE CAPACIDAD DE PAGO ===
-Fecha: ${new Date().toLocaleDateString('es-VE')}
-
-Banco: ${bankInfo.bank}
-Observaciones: ${bankInfo.obs}
-
-FLUJO NETO MENSUAL:
-  Mes 1: Ingresos $${incomes[0].toFixed(2)} - Pagos $${payments[0].toFixed(2)} = NETO $${deps[0].toFixed(2)}
-  Mes 2: Ingresos $${incomes[1].toFixed(2)} - Pagos $${payments[1].toFixed(2)} = NETO $${deps[1].toFixed(2)}
-  Mes 3: Ingresos $${incomes[2].toFixed(2)} - Pagos $${payments[2].toFixed(2)} = NETO $${deps[2].toFixed(2)}
-
-PROMEDIO NETO MENSUAL: $${prom.toFixed(2)}
-CAPACIDAD DE PAGO (${porcentaje}%): $${cap.toFixed(2)}
-
-LIMITE CREDITO GLOBAL: $${(cap*2).toFixed(2)}
-CUOTA QUINCENAL: $${(cap/2).toFixed(2)}`;
-
-  navigator.clipboard.writeText(txt).then(() => {
-    document.getElementById('copyText').textContent = 'Copiado!';
-    document.getElementById('copyBtn').className = 'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 transition-all';
-    setTimeout(() => {
-      document.getElementById('copyText').textContent = 'Exportar Reporte';
-      document.getElementById('copyBtn').className = 'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-slate-700/50 text-slate-300 border border-slate-600/50 hover:bg-slate-700 hover:border-slate-500 transition-all';
-    }, 2500);
-  }).catch(() => {
-    const ta = document.createElement('textarea');
-    ta.value = txt;
-    document.body.appendChild(ta);
-    ta.select();
-    document.execCommand('copy');
-    document.body.removeChild(ta);
-  });
+  const r = calculateResults(STATE.monthlyData, STATE.capacityPct);
+  document.getElementById('rPromedio').textContent = formatUSD(r.promedio);
+  document.getElementById('rCapacidad').textContent = formatUSD(r.capacidad);
+  document.getElementById('rLimite').textContent = formatUSD(r.limite);
+  document.getElementById('rCuota').textContent = formatUSD(r.cuota);
 }
 
 function toggleDebug() {
-  const box = document.getElementById('debugBox');
-  box.classList.toggle('hidden');
+  const el = document.getElementById('debugSection');
+  el.classList.toggle('hidden');
+  if (!el.classList.contains('hidden')) renderDebug();
+}
+
+function renderDebug() {
+  const wrap = document.getElementById('debugContent');
+  let html = '<table class="debug-table"><thead><tr><th>Pagina</th><th>REF</th><th>Fecha</th><th>Concepto</th><th>Cargo</th><th>Abono</th><th>Saldo</th></tr></thead><tbody>';
+
+  for (const row of STATE.allRows) {
+    html += `<tr>
+      <td>${row.page}</td>
+      <td>${row.ref}</td>
+      <td>${row.date || '-'}</td>
+      <td>${row.concept || '-'}</td>
+      <td class="text-rose-400">${row.cargo ? formatUSD(row.cargo) : '-'}</td>
+      <td class="text-emerald-400">${row.abono ? formatUSD(row.abono) : '-'}</td>
+      <td>${row.saldo ? formatUSD(row.saldo) : '-'}</td>
+    </tr>`;
+  }
+
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+
+// ============================================
+// REPORT
+// ============================================
+function copyReport() {
+  const r = calculateResults(STATE.monthlyData, STATE.capacityPct);
+  let report = `=== CREDIT SCORE REPORT ===\n`;
+  report += `Banco: ${STATE.bank}\n`;
+  report += `Moneda: ${STATE.currency}\n`;
+  report += `Transacciones: ${STATE.allRows.length}\n`;
+  report += `Meses: ${STATE.monthlyData.length}\n\n`;
+
+  for (const m of STATE.monthlyData) {
+    report += `${m.label}:\n`;
+    report += `  Ingresos: ${formatUSD(m.incomeUSD)}\n`;
+    report += `  Gastos: ${formatUSD(m.expensesUSD)}\n`;
+    report += `  Neto: ${formatUSD(m.netUSD)}\n`;
+    if (STATE.currency === 'VES') report += `  Tasa BCV: ${m.rate}\n`;
+    report += '\n';
+  }
+
+  report += `--- RESULTADOS ---\n`;
+  report += `Promedio Mensual: ${formatUSD(r.promedio)}\n`;
+  report += `Capacidad (${STATE.capacityPct}%): ${formatUSD(r.capacidad)}\n`;
+  report += `Limite Credito: ${formatUSD(r.limite)}\n`;
+  report += `Cuota Quincenal: ${formatUSD(r.cuota)}\n`;
+
+  navigator.clipboard.writeText(report).then(() => {
+    const btn = event.target.closest('button');
+    const orig = btn.innerHTML;
+    btn.innerHTML = '&#10003; Copiado!';
+    btn.classList.add('bg-emerald-700');
+    setTimeout(() => { btn.innerHTML = orig; btn.classList.remove('bg-emerald-700'); }, 1500);
+  }).catch(() => {
+    alert('No se pudo copiar. Selecciona manualmente el texto.');
+  });
 }
 
 function resetAll() {
-  selectedFiles = [null, null, null];
-  deps = [0, 0, 0];
-  porcentaje = 30;
-  window._ratesUsed = [null, null, null];
-  window._isVES = false;
-  window._recentDates = [null, null, null];
-  document.getElementById('dashboard').classList.add('hidden');
+  STATE.files = [null, null, null];
+  STATE.allRows = [];
+  STATE.monthlyData = [];
+  STATE.bank = '';
+  STATE.currency = '';
+  STATE.capacityPct = 30;
+
+  for (let i = 0; i < 3; i++) {
+    removeFile(i);
+  }
+
+  document.getElementById('dashboardSection').classList.add('hidden');
   document.getElementById('uploadSection').classList.remove('hidden');
-  document.getElementById('errorBox').classList.add('hidden');
-  document.getElementById('processingBox').classList.add('hidden');
-  document.getElementById('pctSlider').value = 30;
-  document.getElementById('pctVal').textContent = '30';
-  document.getElementById('dPctLabel').textContent = '30';
-  initSlots();
-  updateBtn();
+  document.getElementById('progressBar').style.display = 'none';
+  document.getElementById('statusText').classList.add('hidden');
+  document.getElementById('debugSection').classList.add('hidden');
+  document.getElementById('capacitySlider').value = 30;
+  document.getElementById('sliderValue').textContent = '30%';
 }
 
-// ============================================================
-// INIT
-// ============================================================
-initSlots();
+// ============================================
+// MAIN ANALYSIS
+// ============================================
+async function runAnalysis() {
+  const btn = document.getElementById('analyzeBtn');
+  const btnText = document.getElementById('analyzeBtnText');
+  const progressBar = document.getElementById('progressBar');
+  const progressFill = document.getElementById('progressFill');
+  const statusText = document.getElementById('statusText');
+
+  btn.disabled = true;
+  btnText.innerHTML = '<span class="spinner"></span> Analizando...';
+  progressBar.style.display = 'block';
+  statusText.classList.remove('hidden');
+
+  try {
+    const files = STATE.files.filter(f => f !== null);
+    const totalSteps = files.length + 2; // extract + detect + process
+    let step = 0;
+
+    const allRows = [];
+    let fullText = '';
+
+    // Extract from each file
+    for (const file of files) {
+      step++;
+      statusText.textContent = `Extrayendo texto de ${file.name}...`;
+      progressFill.style.width = (step / totalSteps * 100) + '%';
+
+      const rows = await extractStructured(file);
+      allRows.push(...rows);
+
+      // Get first 3000 chars for bank detection
+      if (!fullText) {
+        const arrayBuffer = await file.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        const page = await pdf.getPage(1);
+        const tc = await page.getTextContent();
+        fullText = tc.items.map(i => i.str).join(' ').substring(0, 3000);
+      }
+    }
+
+    // Detect bank
+    step++;
+    statusText.textContent = 'Detectando banco...';
+    progressFill.style.width = (step / totalSteps * 100) + '%';
+    STATE.bank = await detectBank(files[0]);
+
+    // Detect currency
+    STATE.currency = detectCurrency(allRows, fullText);
+    STATE.allRows = allRows;
+
+    // Process
+    step++;
+    statusText.textContent = 'Calculando metricas...';
+    progressFill.style.width = (step / totalSteps * 100) + '%';
+
+    const monthGroups = groupByMonth(allRows);
+    STATE.monthlyData = calculateMonthly(monthGroups, STATE.currency);
+
+    // Done
+    progressFill.style.width = '100%';
+    statusText.textContent = 'Analisis completo.';
+
+    setTimeout(() => renderDashboard(), 400);
+
+  } catch (err) {
+    console.error(err);
+    statusText.textContent = 'Error: ' + err.message;
+    statusText.classList.add('text-rose-400');
+    btn.disabled = false;
+    btnText.textContent = 'Analizar';
+  }
+}
 </script>
+
 </body>
 </html>
