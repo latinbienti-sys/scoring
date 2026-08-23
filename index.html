@@ -529,13 +529,36 @@ function hasDate(line) {
   return /\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}/.test(line);
 }
 
-// Extract date from line
+// Extract date from line - handles many formats
 function extractDate(line) {
-  const m = line.match(/(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})/);
-  if (!m) return null;
-  let year = parseInt(m[3]);
-  if (year < 100) year += 2000;
-  return { day: parseInt(m[1]), month: parseInt(m[2]), year };
+  // DD/MM/YYYY or DD-MM-YYYY or DD.MM.YYYY
+  let m = line.match(/(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})/);
+  if (m) {
+    const day = parseInt(m[1]), month = parseInt(m[2]), year = parseInt(m[3]);
+    if (month >= 1 && month <= 12 && year >= 2020 && year <= 2030) {
+      return { day, month, year };
+    }
+  }
+  // DD/MM/YY
+  m = line.match(/(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2})\b/);
+  if (m) {
+    const day = parseInt(m[1]), month = parseInt(m[2]), year = parseInt(m[3]) + 2000;
+    if (month >= 1 && month <= 12 && year >= 2020 && year <= 2030) {
+      return { day, month, year };
+    }
+  }
+  // Month YYYY (enero 2025, ENE 2025, etc)
+  const monthNames = {enero:1,febrero:2,marzo:3,abril:4,mayo:5,junio:6,julio:7,agosto:8,septiembre:9,octubre:10,noviembre:11,diciembre:12,
+    ene:1,feb:2,mar:3,abr:4,may:5,jun:6,jul:7,ago:8,sep:9,oct:10,nov:11,dic:12};
+  m = line.match(/(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre|ene|feb|mar|abr|may|jun|jul|ago|sep|oct|nov|dic)[.\s]*(\d{4})/i);
+  if (m) {
+    const month = monthNames[m[1].toLowerCase()];
+    const year = parseInt(m[2]);
+    if (month && year >= 2020 && year <= 2030) {
+      return { day: 28, month, year };
+    }
+  }
+  return null;
 }
 
 // Split text into months based on dates
@@ -703,6 +726,10 @@ function analyzeTexts(texts) {
 
   if (likelyVES) {
     isVES = true;
+    // Get the most recent known rate as fallback
+    const allRates = Object.entries(KNOWN_RATES).sort((a,b) => b[0].localeCompare(a[0]));
+    const latestRate = allRates.length > 0 ? allRates[0][1] : null;
+
     // Fetch current rate and use known rates for historical months
     deps = deps.map((d, i) => {
       if (d === 0) return 0;
@@ -710,6 +737,10 @@ function analyzeTexts(texts) {
       let rate = null;
       if (date) {
         rate = getRateForMonth(date.year, date.month);
+      }
+      // If no rate found for that month, use the latest known rate
+      if (!rate && latestRate) {
+        rate = latestRate;
       }
       // Store rate for display
       ratesUsed[i] = rate;
