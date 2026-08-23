@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CreditScorer AI - Analisis de Capacidad de Pago</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  * { font-family: 'Inter', sans-serif; }
+  body { background: #020617; color: #e2e8f0; }
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: #0f172a; }
+  ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+  input[type=range] { -webkit-appearance: none; height: 6px; background: #334155; border-radius: 3px; outline: none; }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 20px; height: 20px; border-radius: 50%; background: #6366f1; cursor: pointer; border: 2px solid #1e293b; box-shadow: 0 0 0 3px rgba(99,102,241,0.2); }
+  input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 5px rgba(99,102,241,0.3); }
+  input[type=number]::-webkit-inner-spin-button,
+  input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  input[type=number] { -moz-appearance: textfield; }
+  .grid-bg { background-image: linear-gradient(rgba(99,102,241,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(99,102,241,0.03) 1px, transparent 1px); background-size: 40px 40px; }
+  .top-line { position: fixed; top: 0; left: 0; right: 0; height: 1px; background: linear-gradient(90deg, transparent, rgba(99,102,241,0.5), transparent); z-index: 50; }
+  .fade-in { animation: fadeIn 0.4s ease-out; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes pulse-bar { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+  .pulse-bar { animation: pulse-bar 1.5s ease-in-out infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinner { animation: spin 0.8s linear infinite; }
+  .drag-over { border-color: #818cf8 !important; background: rgba(99,102,241,0.1) !important; transform: scale(1.02); }
+</style>
+</head>
+<body class="min-h-screen">
+<div class="grid-bg fixed inset-0 pointer-events-none"></div>
+<div class="top-line"></div>
+
+<div class="relative max-w-4xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
+
+  <!-- HEADER -->
+  <header class="text-center mb-10">
+    <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 mb-4">
+      <svg class="h-3.5 w-3.5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+      <span class="text-xs font-medium text-indigo-300">Analisis Automatico - Gratis</span>
+    </div>
+    <h1 class="text-3xl sm:text-4xl font-extrabold tracking-tight">
+      Credit<span class="bg-gradient-to-r from-indigo-400 to-emerald-400 bg-clip-text text-transparent">Scorer</span>
+    </h1>
+    <p class="text-sm text-slate-400 mt-2 max-w-lg mx-auto">
+      Sube tus estados de cuenta PDF y obtene tu capacidad de pago y limites de credito.
+      <span class="text-emerald-400 font-medium">100% gratis, sin API key.</span>
+    </p>
+    <div class="flex flex-wrap items-center justify-center gap-4 mt-5">
+      <div class="flex items-center gap-1.5 text-xs text-slate-500"><svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>100% Gratis</div>
+      <div class="flex items-center gap-1.5 text-xs text-slate-500"><svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>Sin API key</div>
+      <div class="flex items-center gap-1.5 text-xs text-slate-500"><svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>Resultados al instante</div>
+    </div>
+  </header>
+
+  <!-- UPLOAD SECTION (id="uploadSection") -->
+  <div id="uploadSection">
+    <div class="rounded-2xl bg-slate-900/60 border border-slate-800/60 p-5 backdrop-blur-sm mb-6">
+      <div class="flex items-center gap-2 mb-2">
+        <svg class="h-5 w-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+        <h3 class="text-sm font-semibold text-slate-200 uppercase tracking-wider">Estados de Cuenta Bancarios</h3>
+      </div>
+      <p class="text-xs text-slate-400 mb-4">Sube hasta 3 archivos PDF. Del mas reciente al mas antiguo.</p>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4" id="fileSlots"></div>
+
+      <div class="flex items-center gap-2 text-xs text-slate-500 mt-4" id="fileCount">
+        <svg class="h-3.5 w-3.5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        <span>Carga al menos 1 archivo para continuar</span>
+      </div>
+
+      <!-- Processing -->
+      <div id="processingBox" class="hidden mt-4 p-4 rounded-xl bg-indigo-500/10 border border-indigo-500/30">
+        <div class="flex items-center gap-3">
+          <svg class="h-5 w-5 text-indigo-400 spinner" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+          <div>
+            <p class="text-sm font-medium text-indigo-300">Procesando...</p>
+            <p class="text-xs text-slate-400 mt-0.5" id="processingStep">Leyendo PDF...</p>
+          </div>
+        </div>
+        <div class="mt-3 w-full bg-slate-700/50 rounded-full h-1.5">
+          <div class="bg-indigo-500 h-1.5 rounded-full pulse-bar" style="width:60%"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Error -->
+    <div id="errorBox" class="hidden rounded-xl bg-red-500/10 border border-red-500/30 p-4 mb-6">
+      <div class="flex items-start gap-3">
+        <div class="flex items-center justify-center w-8 h-8 rounded-full bg-red-500/20 shrink-0"><span class="text-red-400 text-sm font-bold">!</span></div>
+        <div><p class="text-sm font-medium text-red-300">Error</p><p class="text-xs text-slate-400 mt-1" id="errorText"></p></div>
+      </div>
+    </div>
+
+    <!-- Analyze Button -->
+    <button id="analyzeBtn" onclick="analyze()" disabled
+      class="w-full flex items-center justify-center gap-3 py-4 px-6 rounded-xl text-base font-semibold transition-all duration-300 bg-slate-800/50 text-slate-500 cursor-not-allowed border border-slate-700/50 mb-6">
+      <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+      Analizar Estados de Cuenta
+      <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3"/></svg>
+    </button>
+
+    <!-- Steps -->
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div class="flex items-start gap-3 p-4 rounded-xl bg-slate-900/40 border border-slate-800/40">
+        <div class="flex items-center justify-center w-7 h-7 rounded-lg bg-indigo-500/15 shrink-0"><span class="text-xs font-bold text-indigo-400">1</span></div>
+        <div><p class="text-sm font-semibold text-slate-200">Sube tus PDFs</p><p class="text-xs text-slate-500 mt-0.5">Arrastra tus estados de cuenta</p></div>
+      </div>
+      <div class="flex items-start gap-3 p-4 rounded-xl bg-slate-900/40 border border-slate-800/40">
+        <div class="flex items-center justify-center w-7 h-7 rounded-lg bg-indigo-500/15 shrink-0"><span class="text-xs font-bold text-indigo-400">2</span></div>
+        <div><p class="text-sm font-semibold text-slate-200">Analisis automatico</p><p class="text-xs text-slate-500 mt-0.5">Detecta banco y suma depositos</p></div>
+      </div>
+      <div class="flex items-start gap-3 p-4 rounded-xl bg-slate-900/40 border border-slate-800/40">
+        <div class="flex items-center justify-center w-7 h-7 rounded-lg bg-indigo-500/15 shrink-0"><span class="text-xs font-bold text-indigo-400">3</span></div>
+        <div><p class="text-sm font-semibold text-slate-200">Obten tu Score</p><p class="text-xs text-slate-500 mt-0.5">Capacidad de pago al instante</p></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- DASHBOARD (id="dashboard", hidden initially) -->
+  <div id="dashboard" class="hidden fade-in space-y-6">
+
+    <div class="flex items-center justify-between flex-wrap gap-3">
+      <div>
+        <h2 class="text-xl font-bold text-white flex items-center gap-2">
+          <svg class="h-5 w-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
+          Resultado del Analisis
+        </h2>
+        <p class="text-xs text-slate-400 mt-1">Haz clic en el lapiz para corregir valores</p>
+      </div>
+      <button onclick="copyReport()" id="copyBtn"
+        class="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-slate-700/50 text-slate-300 border border-slate-600/50 hover:bg-slate-700 hover:border-slate-500 transition-all">
+        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/></svg>
+        <span id="copyText">Exportar Reporte</span>
+      </button>
+    </div>
+
+    <!-- Bank Info -->
+    <div class="rounded-xl bg-gradient-to-r from-indigo-500/10 to-slate-800/50 border border-indigo-500/20 p-5">
+      <div class="flex items-start gap-4">
+        <div class="flex items-center justify-center w-12 h-12 rounded-xl bg-indigo-500/20 shrink-0">
+          <svg class="h-6 w-6 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
+        </div>
+        <div class="flex-1">
+          <h3 class="text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">Banco Detectado</h3>
+          <p class="text-lg font-bold text-white" id="dBank">-</p>
+          <div class="mt-2 flex items-start gap-2">
+            <svg class="h-3.5 w-3.5 text-amber-400 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
+            <p class="text-xs text-slate-400 leading-relaxed" id="dObs">-</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Editable Deposits -->
+    <div class="rounded-xl bg-slate-800/40 border border-slate-700/50 p-5">
+      <div class="flex items-center gap-2 mb-4">
+        <svg class="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+        <h3 class="text-sm font-semibold text-slate-300 uppercase tracking-wider">Depositos Extraidos</h3>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4" id="depositFields"></div>
+    </div>
+
+    <!-- Slider -->
+    <div class="rounded-xl bg-slate-800/40 border border-slate-700/50 p-5">
+      <div class="flex items-center gap-2 mb-4">
+        <svg class="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg>
+        <h3 class="text-sm font-semibold text-slate-300 uppercase tracking-wider">Capacidad de Pago (% sobre promedio)</h3>
+      </div>
+      <div class="flex items-center gap-4">
+        <input type="range" min="10" max="50" step="1" value="30" id="pctSlider" oninput="updatePct(this.value)" class="flex-1">
+        <div class="flex items-center gap-1 px-3 py-1.5 bg-indigo-500/10 border border-indigo-500/30 rounded-lg min-w-[70px] justify-center">
+          <span class="text-lg font-bold text-indigo-300 tabular-nums" id="pctVal">30</span>
+          <span class="text-xs text-indigo-400">%</span>
+        </div>
+      </div>
+      <div class="flex justify-between text-[10px] text-slate-500 px-1 mt-1">
+        <span>10% Conservador</span><span>30% Estandar</span><span>50% Agresivo</span>
+      </div>
+    </div>
+
+    <!-- Result Cards -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div class="rounded-xl bg-gradient-to-br from-slate-800/60 to-slate-800/30 border border-slate-700/50 p-5">
+        <div class="flex items-center gap-3 mb-3">
+          <div class="flex items-center justify-center w-10 h-10 rounded-xl bg-blue-500/15">
+            <svg class="h-5 w-5 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          </div>
+          <div><p class="text-xs text-slate-400 font-medium">Deposito Promedio Mensual</p><p class="text-[10px] text-slate-500">Promedio de los 3 meses</p></div>
+        </div>
+        <p class="text-2xl font-bold text-white tabular-nums" id="dPromedio">$0.00</p>
+      </div>
+      <div class="rounded-xl bg-gradient-to-br from-indigo-800/30 to-indigo-900/10 border border-indigo-500/20 p-5">
+        <div class="flex items-center gap-3 mb-3">
+          <div class="flex items-center justify-center w-10 h-10 rounded-xl bg-indigo-500/15">
+            <svg class="h-5 w-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg>
+          </div>
+          <div><p class="text-xs text-slate-400 font-medium">Capacidad de Pago Mensual</p><p class="text-[10px] text-slate-500"><span id="dPctLabel">30</span>% del promedio</p></div>
+        </div>
+        <p class="text-2xl font-bold text-indigo-300 tabular-nums" id="dCapacidad">$0.00</p>
+      </div>
+    </div>
+
+    <!-- Credit Limits -->
+    <div class="rounded-xl bg-gradient-to-br from-emerald-800/20 to-emerald-900/5 border border-emerald-500/20 p-6">
+      <div class="flex items-center gap-2 mb-5">
+        <svg class="h-5 w-5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        <h3 class="text-sm font-semibold text-emerald-300 uppercase tracking-wider">Limites de Credito Calculados</h3>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div>
+          <p class="text-xs text-slate-400 font-medium mb-1">Limite de Credito Global</p>
+          <p class="text-3xl font-bold text-emerald-300 tabular-nums" id="dLimite">$0.00</p>
+          <p class="text-[10px] text-slate-500 mt-1">Capacidad de Pago x 2</p>
+        </div>
+        <div>
+          <p class="text-xs text-slate-400 font-medium mb-1">Cuota Quincenal Maxima</p>
+          <p class="text-3xl font-bold text-emerald-300 tabular-nums" id="dCuota">$0.00</p>
+          <p class="text-[10px] text-slate-500 mt-1">Capacidad de Pago / 2</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Reset -->
+    <button onclick="resetAll()"
+      class="w-full flex items-center justify-center gap-2 py-3 px-6 rounded-xl text-sm font-medium bg-slate-800/50 text-slate-300 border border-slate-700/50 hover:bg-slate-800 hover:border-slate-600 transition-all duration-300">
+      <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+      Nuevo Analisis
+    </button>
+  </div>
+
+  <footer class="text-center mt-12 pt-6 border-t border-slate-800/50">
+    <p class="text-xs text-slate-600">CreditScorer AI - Analisis crediticio automatizado, 100% gratis</p>
+  </footer>
+</div>
+
+<script>
+// ============================================================
+// CONFIG
+// ============================================================
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+const MONTH_LABELS = ['Mes 1 (mas reciente)', 'Mes 2', 'Mes 3 (mas antiguo)'];
+let selectedFiles = [null, null, null];
+let porcentaje = 30;
+
+// ============================================================
+// INIT FILE SLOTS
+// ============================================================
+function initSlots() {
+  const container = document.getElementById('fileSlots');
+  container.innerHTML = '';
+  MONTH_LABELS.forEach((label, i) => {
+    const div = document.createElement('div');
+    div.id = 'slot-' + i;
+    div.className = 'relative group rounded-xl border-2 border-dashed border-slate-600/50 bg-slate-800/30 hover:border-slate-500/70 hover:bg-slate-800/50 transition-all duration-300';
+    div.innerHTML = `
+      <input type="file" accept=".pdf" onchange="onFileSelect(event,${i})" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10">
+      <div class="p-4 flex flex-col items-center justify-center min-h-[140px] text-center">
+        <div class="flex items-center justify-center w-10 h-10 rounded-full bg-slate-700/50 group-hover:bg-slate-700/80 transition-colors">
+          <svg class="h-5 w-5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+        </div>
+        <p class="text-xs font-medium text-slate-300 mt-2">${label}</p>
+        <p class="text-[10px] text-slate-500 mt-0.5">Arrastra o haz clic</p>
+      </div>`;
+
+    div.addEventListener('dragover', e => { e.preventDefault(); div.classList.add('drag-over'); });
+    div.addEventListener('dragleave', e => { e.preventDefault(); div.classList.remove('drag-over'); });
+    div.addEventListener('drop', e => {
+      e.preventDefault(); div.classList.remove('drag-over');
+      const f = Array.from(e.dataTransfer.files).find(x => x.type === 'application/pdf');
+      if (f) setFile(i, f);
+    });
+    container.appendChild(div);
+  });
+}
+
+function onFileSelect(e, idx) {
+  const f = e.target.files[0];
+  if (f && f.type === 'application/pdf') setFile(idx, f);
+}
+
+function setFile(idx, file) {
+  selectedFiles[idx] = file;
+  const slot = document.getElementById('slot-' + idx);
+  slot.className = 'relative group rounded-xl border-2 border-dashed border-emerald-500/50 bg-emerald-500/5 transition-all duration-300';
+  slot.innerHTML = `
+    <input type="file" accept=".pdf" onchange="onFileSelect(event,${idx})" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10">
+    <button onclick="event.stopPropagation();event.preventDefault();removeFile(${idx})" class="absolute top-2 right-2 p-1 rounded-full bg-slate-700/80 hover:bg-red-500/80 transition-colors z-20">
+      <svg class="h-3 w-3 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+    </button>
+    <div class="p-4 flex flex-col items-center justify-center min-h-[140px] text-center">
+      <div class="flex items-center justify-center w-10 h-10 rounded-full bg-emerald-500/20 mb-2">
+        <svg class="h-5 w-5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+      </div>
+      <p class="text-xs font-medium text-emerald-300 truncate max-w-full px-2">${file.name}</p>
+      <p class="text-[10px] text-slate-400 mt-1">${(file.size/1024/1024).toFixed(2)} MB</p>
+    </div>`;
+  updateBtn();
+}
+
+function removeFile(idx) {
+  selectedFiles[idx] = null;
+  initSlots();
+  updateBtn();
+}
+
+function updateBtn() {
+  const has = selectedFiles.some(f => f !== null);
+  const btn = document.getElementById('analyzeBtn');
+  if (has) {
+    btn.disabled = false;
+    btn.className = 'w-full flex items-center justify-center gap-3 py-4 px-6 rounded-xl text-base font-semibold transition-all duration-300 bg-gradient-to-r from-indigo-600 to-indigo-500 text-white hover:from-indigo-500 hover:to-indigo-400 shadow-lg shadow-indigo-500/25 hover:shadow-indigo-500/40 active:scale-[0.98] mb-6';
+  } else {
+    btn.disabled = true;
+    btn.className = 'w-full flex items-center justify-center gap-3 py-4 px-6 rounded-xl text-base font-semibold transition-all duration-300 bg-slate-800/50 text-slate-500 cursor-not-allowed border border-slate-700/50 mb-6';
+  }
+  const count = selectedFiles.filter(f => f !== null).length;
+  document.getElementById('fileCount').innerHTML = count > 0
+    ? '<svg class="h-3.5 w-3.5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg><span>' + count + ' de 3 archivos cargados</span>'
+    : '<svg class="h-3.5 w-3.5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg><span>Carga al menos 1 archivo para continuar</span>';
+}
+
+// ============================================================
+// PDF EXTRACTION
+// ============================================================
+async function extractText(file) {
+  const buf = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({data: buf}).promise;
+  let text = '';
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const tc = await page.getTextContent();
+    text += tc.items.map(it => it.str || '').join(' ') + '\n';
+  }
+  return text;
+}
+
+// ============================================================
+// BANK DETECTION + DEPOSIT ANALYSIS
+// ============================================================
+const BANKS = [
+  {name:'Banco Mercantil', p:[/mercantil/i]},
+  {name:'Banco Banesco', p:[/banesco/i]},
+  {name:'BBVA Banco Universal', p:[/bbva/i, /provincial/i]},
+  {name:'Banco Santander', p:[/santander/i]},
+  {name:'Banco de Venezuela', p:[/banco\s*de\s*venezuela/i, /bandev/i]},
+  {name:'Banco Plaza', p:[/banco\s*plaza/i]},
+  {name:'BOD', p:[/\bbod\b/i, /occidental\s*de\s*descuento/i]},
+  {name:'Banco Nacional de Credito', p:[/nacional\s*de\s*cr/i]},
+  {name:'Banco Exterior', p:[/banco\s*exterior/i]},
+  {name:'Banco Caroni', p:[/caron[ií]/i]},
+  {name:'Banco Fondo Comun', p:[/fondo\s*com/i]},
+  {name:'Bancaribe', p:[/bancaribe/i]},
+  {name:'Bancrecer', p:[/bancrecer/i]},
+  {name:'Banco Activo', p:[/banco\s*activo/i]},
+  {name:'Bancamiga', p:[/bancamiga/i]},
+  {name:'Banco Mi Banco', p:[/mi\s*banco/i]},
+  {name:'Banco Tesoro', p:[/tesoro/i]},
+];
+
+function detectBank(text) {
+  for (const b of BANKS) {
+    for (const r of b.p) { if (r.test(text)) return b.name; }
+  }
+  return 'Banco no detectado';
+}
+
+function parseAmount(s) {
+  let c = s.replace(/\s/g,'');
+  if (/^\d{1,3}(\.\d{3})+,\d{1,2}$/.test(c)) c = c.replace(/\./g,'').replace(',','.');
+  else if (/^\d{1,3}(,\d{3})+\.\d{1,2}$/.test(c)) c = c.replace(/,/g,'');
+  else if (/^\d+,\d{1,2}$/.test(c) && !/^\d+\.\d+$/.test(c)) c = c.replace(',','.');
+  const n = parseFloat(c);
+  return isNaN(n) ? 0 : Math.abs(n);
+}
+
+function isCredit(line) {
+  const cr = [/abono/i,/dep[oó]s/i,/transfer/i,/n[oó]mina/i,/pago\s*recib/i,/ingreso/i,/cr[eé]dito/i,/bono/i,/acredit/i,/consign/i,/devoluci/i,/reembolso/i];
+  const db = [/d[eé]bito/i,/retiro/i,/cargo/i,/comisi[oó]n\s*(?:por|de)/i,/impuesto/i,/iv(?:a|tan)/i,/pago\s*(?:de|por)/i,/giro/i,/mora/i];
+  const has = cr.some(r => r.test(line));
+  const deb = db.some(r => r.test(line));
+  return has && !deb;
+}
+
+function extractAmounts(line) {
+  const pats = [
+    /(?:Bs\.?\s*|USD\s*|\$\s*)(\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{2})?)/g,
+    /(\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{2}))/g
+  ];
+  for (const pat of pats) {
+    const amts = [];
+    let m;
+    while ((m = pat.exec(line)) !== null) { const v = parseAmount(m[1]); if (v > 0) amts.push(v); }
+    if (amts.length) return amts;
+  }
+  return [];
+}
+
+function calcMonthDeposits(text) {
+  const lines = text.split('\n');
+  let total = 0;
+  for (const line of lines) {
+    if (isCredit(line)) {
+      const amts = extractAmounts(line);
+      if (amts.length) total += Math.max(...amts);
+    }
+  }
+  return total;
+}
+
+function analyzeTexts(texts) {
+  const all = texts.join('\n\n');
+  const bank = detectBank(all);
+
+  const months = [];
+  for (const t of texts) {
+    const lines = t.split('\n');
+    if (lines.length > 30) {
+      const chunk = Math.floor(lines.length / 3);
+      months.push(lines.slice(0, chunk).join('\n'));
+      months.push(lines.slice(chunk, chunk*2).join('\n'));
+      months.push(lines.slice(chunk*2).join('\n'));
+    } else {
+      months.push(t);
+    }
+  }
+
+  const recent = months.slice(-3);
+  const deps = recent.map(m => calcMonthDeposits(m));
+  while (deps.length < 3) deps.push(0);
+
+  const obs = [];
+  if (bank === 'Banco no detectado') obs.push('No se pudo identificar el banco automaticamente. Verifica el resultado.');
+  if (deps.some(d => d === 0)) obs.push('Algunos meses estan en $0. Puede que el formato no sea compatible. Editar manualmente.');
+  if (obs.length === 0) obs.push('Analisis completado. Depositos = transferencias + abonos + nominas detectadas.');
+
+  return { banco: bank, deps, obs: obs.join(' ') };
+}
+
+// ============================================================
+// ANALYZE
+// ============================================================
+async function analyze() {
+  const sel = selectedFiles.filter(f => f !== null);
+  if (!sel.length) return;
+
+  document.getElementById('errorBox').classList.add('hidden');
+  document.getElementById('processingBox').classList.remove('hidden');
+  document.getElementById('analyzeBtn').disabled = true;
+
+  try {
+    const texts = [];
+    for (let i = 0; i < sel.length; i++) {
+      document.getElementById('processingStep').textContent = 'Leyendo PDF ' + (i+1) + ' de ' + sel.length + '...';
+      await new Promise(r => setTimeout(r, 200));
+      texts.push(await extractText(sel[i]));
+    }
+    document.getElementById('processingStep').textContent = 'Analizando depositos por mes...';
+    await new Promise(r => setTimeout(r, 300));
+
+    const res = analyzeTexts(texts);
+
+    document.getElementById('processingBox').classList.add('hidden');
+    document.getElementById('uploadSection').classList.add('hidden');
+    document.getElementById('dashboard').classList.remove('hidden');
+
+    showDashboard(res);
+  } catch(e) {
+    document.getElementById('processingBox').classList.add('hidden');
+    document.getElementById('errorBox').classList.remove('hidden');
+    document.getElementById('errorText').textContent = e.message || 'Error al procesar el PDF';
+    document.getElementById('analyzeBtn').disabled = false;
+  }
+}
+
+// ============================================================
+// DASHBOARD
+// ============================================================
+let deps = [0, 0, 0];
+let bankInfo = { bank: '', obs: '' };
+
+function showDashboard(res) {
+  deps = res.deps;
+  bankInfo = { bank: res.banco, obs: res.obs };
+  document.getElementById('dBank').textContent = res.banco;
+  document.getElementById('dObs').textContent = res.obs;
+
+  const container = document.getElementById('depositFields');
+  container.innerHTML = '';
+  const labels = ['Mes 1 (reciente)', 'Mes 2', 'Mes 3 (antiguo)'];
+  labels.forEach((l, i) => {
+    container.innerHTML += `
+      <div class="p-3 rounded-lg bg-slate-700/30 border border-slate-600/30 group">
+        <div class="flex items-center gap-1.5 mb-1.5">
+          <svg class="h-3.5 w-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+          <span class="text-xs text-slate-400 font-medium">${l}</span>
+        </div>
+        <p class="text-lg font-bold text-white tabular-nums" id="depVal${i}">$${deps[i].toFixed(2)}</p>
+        <button onclick="editDeposit(${i})" class="opacity-0 group-hover:opacity-100 transition-opacity mt-1 text-[10px] text-indigo-400 hover:text-indigo-300">Editar</button>
+      </div>`;
+  });
+  recalc();
+}
+
+function editDeposit(i) {
+  const el = document.getElementById('depVal' + i);
+  el.innerHTML = `<input type="number" value="${deps[i]}" onchange="setDeposit(${i}, this.value)" onblur="setDeposit(${i}, this.value)" class="w-full bg-slate-700/50 border border-indigo-500/50 rounded-lg px-3 py-1 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/30" autofocus>`;
+  el.querySelector('input').focus();
+}
+
+function setDeposit(i, val) {
+  deps[i] = parseFloat(val) || 0;
+  const el = document.getElementById('depVal' + i);
+  el.innerHTML = '$' + deps[i].toFixed(2);
+  recalc();
+}
+
+function updatePct(val) {
+  porcentaje = parseInt(val);
+  document.getElementById('pctVal').textContent = val;
+  document.getElementById('dPctLabel').textContent = val;
+  recalc();
+}
+
+function recalc() {
+  const prom = (deps[0] + deps[1] + deps[2]) / 3;
+  const cap = prom * (porcentaje / 100);
+  const lim = cap * 2;
+  const cuo = cap / 2;
+  document.getElementById('dPromedio').textContent = '$' + prom.toFixed(2);
+  document.getElementById('dCapacidad').textContent = '$' + cap.toFixed(2);
+  document.getElementById('dLimite').textContent = '$' + lim.toFixed(2);
+  document.getElementById('dCuota').textContent = '$' + cuo.toFixed(2);
+}
+
+function copyReport() {
+  const prom = (deps[0] + deps[1] + deps[2]) / 3;
+  const cap = prom * (porcentaje / 100);
+  const txt = `=== REPORTE DE CAPACIDAD DE PAGO ===
+Fecha: ${new Date().toLocaleDateString('es-VE')}
+
+Banco: ${bankInfo.bank}
+Observaciones: ${bankInfo.obs}
+
+DEPOSITOS:
+  Mes 1: $${deps[0].toFixed(2)}
+  Mes 2: $${deps[1].toFixed(2)}
+  Mes 3: $${deps[2].toFixed(2)}
+
+PROMEDIO MENSUAL: $${prom.toFixed(2)}
+CAPACIDAD DE PAGO (${porcentaje}%): $${cap.toFixed(2)}
+
+LIMITE CREDITO GLOBAL: $${(cap*2).toFixed(2)}
+CUOTA QUINCENAL: $${(cap/2).toFixed(2)}`;
+
+  navigator.clipboard.writeText(txt).then(() => {
+    document.getElementById('copyText').textContent = 'Copiado!';
+    document.getElementById('copyBtn').className = 'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 transition-all';
+    setTimeout(() => {
+      document.getElementById('copyText').textContent = 'Exportar Reporte';
+      document.getElementById('copyBtn').className = 'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-slate-700/50 text-slate-300 border border-slate-600/50 hover:bg-slate-700 hover:border-slate-500 transition-all';
+    }, 2500);
+  }).catch(() => {
+    const ta = document.createElement('textarea');
+    ta.value = txt;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+  });
+}
+
+function resetAll() {
+  selectedFiles = [null, null, null];
+  deps = [0, 0, 0];
+  porcentaje = 30;
+  document.getElementById('dashboard').classList.add('hidden');
+  document.getElementById('uploadSection').classList.remove('hidden');
+  document.getElementById('errorBox').classList.add('hidden');
+  document.getElementById('processingBox').classList.add('hidden');
+  document.getElementById('pctSlider').value = 30;
+  document.getElementById('pctVal').textContent = '30';
+  document.getElementById('dPctLabel').textContent = '30';
+  initSlots();
+  updateBtn();
+}
+
+// ============================================================
+// INIT
+// ============================================================
+initSlots();
+</script>
+</body>
+</html>
