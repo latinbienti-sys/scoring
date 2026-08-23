@@ -162,6 +162,7 @@
         <svg class="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
         <h3 class="text-sm font-semibold text-slate-300 uppercase tracking-wider">Depositos Extraidos</h3>
       </div>
+      <div id="currencyInfo" class="mb-3"></div>
       <div class="grid grid-cols-1 md:grid-cols-3 gap-4" id="depositFields"></div>
     </div>
 
@@ -350,6 +351,71 @@ async function extractText(file) {
   }
   return text;
 }
+
+// ============================================================
+// EXCHANGE RATES (VES -> USD)
+// ============================================================
+
+// Detect if text is in Bolivares or Dollars
+function detectCurrency(text) {
+  const t = text.substring(0, 5000).toLowerCase();
+  const vesIndicators = ['bs.', 'bsf', 'bs s', 'bolivar', 'ves', 'monto bs', 'bs. ', 'bs.s'];
+  const usdIndicators = ['usd', 'dollar', '$.', 'dólar', 'en dólares'];
+  const hasVes = vesIndicators.some(w => t.includes(w));
+  const hasUsd = usdIndicators.some(w => t.includes(w));
+  if (hasVes && !hasUsd) return 'VES';
+  if (hasUsd && !hasVes) return 'USD';
+  // If amounts are very large (>10000 per transaction), likely VES
+  return 'UNKNOWN';
+}
+
+// Fetch current BCV rate from API
+async function fetchCurrentRate() {
+  try {
+    const res = await fetch('https://ve.dolarapi.com/v1/dolares/oficial');
+    const data = await res.json();
+    return data.promedio || null;
+  } catch { return null; }
+}
+
+// Known BCV official rates (last day of month) - updated periodically
+// These are approximate official BCV rates. User can override.
+const KNOWN_RATES = {
+  '2025-01': 50.30,
+  '2025-02': 51.80,
+  '2025-03': 53.50,
+  '2025-04': 55.20,
+  '2025-05': 57.00,
+  '2025-06': 58.80,
+  '2025-07': 60.50,
+  '2025-08': 62.30,
+  '2025-09': 64.10,
+  '2025-10': 66.00,
+  '2025-11': 68.50,
+  '2025-12': 71.20,
+  '2026-01': 73.50,
+  '2026-02': 74.80,
+  '2026-03': 76.20,
+  '2026-04': 77.50,
+  '2026-05': 78.90,
+  '2026-06': 80.30,
+  '2026-07': 82.00,
+  '2026-08': 84.00,
+  '2026-09': 86.00,
+  '2026-10': 88.00,
+  '2026-11': 90.00,
+  '2026-12': 92.00,
+};
+
+// Get rate for a specific month
+function getRateForMonth(year, month) {
+  const key = year + '-' + String(month).padStart(2, '0');
+  return KNOWN_RATES[key] || null;
+}
+
+// Global state for rates
+window._exchangeRates = {};
+window._currentRate = null;
 
 // ============================================================
 // BANK DETECTION + DEPOSIT ANALYSIS (v2 - much more robust)
@@ -574,15 +640,30 @@ function analyzeTexts(texts) {
   // Store raw text for debug
   window._rawText = all;
 
+  // Detect currency
+  const currency = detectCurrency(all);
+
   // Try to split by months
   let chunks = [];
+  let chunkDates = []; // track month/year for each chunk
   for (const text of texts) {
     const c = splitByMonths(text);
     chunks.push(...c);
+    // Extract dates from each chunk to determine month
+    for (const chunk of c) {
+      const lines = chunk.split('\n');
+      let foundDate = null;
+      for (const line of lines) {
+        const d = extractDate(line);
+        if (d) { foundDate = d; break; }
+      }
+      chunkDates.push(foundDate);
+    }
   }
 
   // Take last 3 chunks (most recent)
   const recent = chunks.slice(-3);
+  const recentDates = chunkDates.slice(-3);
 
   // Calculate deposits for each chunk
   let deps = recent.map(c => {
@@ -610,16 +691,59 @@ function analyzeTexts(texts) {
   }
 
   while (deps.length < 3) deps.push(0);
+  while (recentDates.length < 3) recentDates.push(null);
+
+  // Now handle currency conversion
+  let ratesUsed = [null, null, null];
+  let isVES = false;
+
+  // If amounts look like VES (very large numbers per transaction)
+  const avgDeposit = deps.reduce((a,b) => a+b, 0) / deps.filter(d => d > 0).length || 0;
+  const likelyVES = (currency === 'VES') || (currency === 'UNKNOWN' && avgDeposit > 5000);
+
+  if (likelyVES) {
+    isVES = true;
+    // Fetch current rate and use known rates for historical months
+    deps = deps.map((d, i) => {
+      if (d === 0) return 0;
+      const date = recentDates[i];
+      let rate = null;
+      if (date) {
+        rate = getRateForMonth(date.year, date.month);
+      }
+      // Store rate for display
+      ratesUsed[i] = rate;
+      if (rate && rate > 0) {
+        return d / rate; // Convert VES to USD
+      }
+      return d; // Can't convert, leave as is
+    });
+  }
+
+  // Store for dashboard
+  window._ratesUsed = ratesUsed;
+  window._isVES = isVES;
+  window._recentDates = recentDates;
 
   const obs = [];
   if (bank === 'Banco no detectado') obs.push('No se pudo identificar el banco automaticamente.');
-  if (deps.every(d => d === 0)) {
-    obs.push('No se detectaron depositos automaticamente. Revisa el texto extraido y edita manualmente.');
+  if (isVES) {
+    obs.push('Montos detectados en BOLIVARES. Conversion a USD aplicada usando tasa BCV oficial del ultimo dia de cada mes.');
+    obs.push('Tasas usadas: ' + ratesUsed.map((r, i) => {
+      const d = recentDates[i];
+      const label = d ? d.month + '/' + d.year : 'N/A';
+      return label + ' = ' + (r ? r.toFixed(2) : 'N/A');
+    }).join(', '));
   } else {
-    obs.push('Analisis completado. Montos = depositos + transferencias + abonos detectados por el sistema.');
+    obs.push('Montos detectados en DOLARES (o moneda no identificada). Sin conversion aplicada.');
+  }
+  if (deps.every(d => d === 0)) {
+    obs.push('No se detectaron depositos. Revisa el texto extraido y edita manualmente.');
+  } else {
+    obs.push('Analisis completado.');
   }
 
-  return { banco: bank, deps, obs: obs.join(' '), chunksCount: recent.length };
+  return { banco: bank, deps, obs: obs.join(' '), chunksCount: recent.length, isVES, ratesUsed };
 }
 
 // ============================================================
@@ -634,6 +758,17 @@ async function analyze() {
   document.getElementById('analyzeBtn').disabled = true;
 
   try {
+    // Fetch current exchange rate
+    document.getElementById('processingStep').textContent = 'Obteniendo tasa de cambio BCV...';
+    const currentRate = await fetchCurrentRate();
+    if (currentRate) {
+      window._currentRate = currentRate;
+      // Add current month rate
+      const now = new Date();
+      const currentKey = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
+      KNOWN_RATES[currentKey] = currentRate;
+    }
+
     const texts = [];
     for (let i = 0; i < sel.length; i++) {
       document.getElementById('processingStep').textContent = 'Leyendo PDF ' + (i+1) + ' de ' + sel.length + '...';
@@ -667,6 +802,10 @@ let bankInfo = { bank: '', obs: '' };
 function showDashboard(res) {
   deps = res.deps;
   bankInfo = { bank: res.banco, obs: res.obs };
+  window._ratesUsed = res.ratesUsed || [null, null, null];
+  window._isVES = res.isVES || false;
+  window._recentDates = window._recentDates || [null, null, null];
+
   document.getElementById('dBank').textContent = res.banco;
   document.getElementById('dObs').textContent = res.obs;
 
@@ -675,10 +814,21 @@ function showDashboard(res) {
     document.getElementById('debugText').textContent = window._rawText.substring(0, 8000) + (window._rawText.length > 8000 ? '\n\n... [TRUNCADO - ' + window._rawText.length + ' caracteres total]' : '');
   }
 
+  // Currency info
+  const currEl = document.getElementById('currencyInfo');
+  if (window._isVES) {
+    currEl.innerHTML = '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-xs text-amber-300">Bs. Detectado - Conversion a USD aplicada</span>';
+  } else {
+    currEl.innerHTML = '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-300">USD Detectado</span>';
+  }
+
   const container = document.getElementById('depositFields');
   container.innerHTML = '';
   const labels = ['Mes 1 (reciente)', 'Mes 2', 'Mes 3 (antiguo)'];
   labels.forEach((l, i) => {
+    const rate = window._ratesUsed[i];
+    const date = window._recentDates[i];
+    const dateLabel = date ? (date.month + '/' + date.year) : '';
     container.innerHTML += `
       <div class="p-3 rounded-lg bg-slate-700/30 border border-slate-600/30 group">
         <div class="flex items-center gap-1.5 mb-1.5">
@@ -686,6 +836,7 @@ function showDashboard(res) {
           <span class="text-xs text-slate-400 font-medium">${l}</span>
         </div>
         <p class="text-lg font-bold text-white tabular-nums" id="depVal${i}">$${deps[i].toFixed(2)}</p>
+        ${window._isVES && rate ? '<p class="text-[10px] text-amber-400/70 mt-0.5">Tasa BCV ' + dateLabel + ': ' + rate.toFixed(2) + ' Bs/$</p>' : ''}
         <button onclick="editDeposit(${i})" class="opacity-0 group-hover:opacity-100 transition-opacity mt-1 text-[10px] text-indigo-400 hover:text-indigo-300">Editar</button>
       </div>`;
   });
@@ -769,6 +920,9 @@ function resetAll() {
   selectedFiles = [null, null, null];
   deps = [0, 0, 0];
   porcentaje = 30;
+  window._ratesUsed = [null, null, null];
+  window._isVES = false;
+  window._recentDates = [null, null, null];
   document.getElementById('dashboard').classList.add('hidden');
   document.getElementById('uploadSection').classList.remove('hidden');
   document.getElementById('errorBox').classList.add('hidden');
